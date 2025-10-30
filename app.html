@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title>Planner</title>
     <link rel="manifest" href="manifest.webmanifest">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -27,14 +27,16 @@
       .context-menu-item { padding: 8px 12px; cursor: pointer; }
       .context-menu-item:hover { background: #f5f5f5; }
 
-      /* Mobile layout */
+      /* Mobile layout (iPhone 13 friendly) */
       @media (max-width: 820px) {
         #app { grid-template-columns: 1fr; }
-        #topbar { display: flex; }
+        #topbar { display: flex; padding-top: calc(env(safe-area-inset-top, 0px) + 10px); }
         #sidebar { position: fixed; top: 0; left: 0; height: 100%; width: 85%; max-width: 360px; z-index: 3000; border-right: 1px solid #ddd; transform: translateX(-100%); transition: transform 0.25s ease; box-shadow: 2px 0 12px rgba(0,0,0,0.15); }
         #sidebar.open { transform: translateX(0); }
-        /* Push map under a simple topbar for spacing */
-        .map-wrapper { position: relative; height: calc(100% - 48px); }
+        /* Use dynamic viewport to avoid Safari 100vh issues */
+        .map-wrapper { position: relative; height: calc(var(--app-vh, 1vh) * 100 - 48px - env(safe-area-inset-bottom, 0px)); padding-bottom: env(safe-area-inset-bottom, 0px); }
+        /* Larger touch targets */
+        button, input { font-size: 16px; }
       }
     </style>
   </head>
@@ -141,6 +143,13 @@
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
       }
+      // iOS Safari 100vh fix: set --app-vh to innerHeight
+      (function setVh(){
+        var set = function(){ document.documentElement.style.setProperty('--app-vh', (window.innerHeight*0.01)+'px'); };
+        set();
+        window.addEventListener('resize', set);
+        window.addEventListener('orientationchange', set);
+      })();
       // Sidebar toggle for mobile
       (function(){
         var btn = document.getElementById('toggle-sidebar');
