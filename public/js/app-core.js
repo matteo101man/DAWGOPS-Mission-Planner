@@ -1100,6 +1100,15 @@ document.addEventListener('DOMContentLoaded', function() {
           e.stopPropagation();
         }, { passive: false });
       }
+      // Ensure sidebar scroll doesn't pan the map on touch
+      const sidebar = document.getElementById('sidebar');
+      if (sidebar && window.L && L.DomEvent) {
+        try {
+          L.DomEvent.disableScrollPropagation(sidebar);
+          L.DomEvent.disableClickPropagation(sidebar);
+        } catch(_){}
+        sidebar.addEventListener('touchmove', function(e){ e.stopPropagation(); }, {passive:false});
+      }
     }
 
     // Create measure distance button
@@ -2337,20 +2346,35 @@ document.addEventListener('DOMContentLoaded', function() {
       updateGrid
     };
 
-    // Add mousemove handler for coordinate display
+    // Add dynamic center-based MGRS display (works on touch and mouse)
     const coordDisplay = document.getElementById('cursor-position');
     if (coordDisplay) {
         // Make the display clickable
         coordDisplay.style.cursor = 'pointer';
-        
+
+        function updateCenterMgrs() {
+            try {
+                const center = map.getCenter();
+                if (window.mgrs) {
+                    const mgrsRef = window.mgrs.forward([center.lng, center.lat]);
+                    coordDisplay.textContent = `MGRS: ${formatMgrs(mgrsRef)}`;
+                    coordDisplay.setAttribute('data-mgrs', mgrsRef);
+                }
+            } catch (error) {
+                console.error('Error converting to MGRS:', error);
+                coordDisplay.textContent = 'Invalid coordinates';
+            }
+        }
+
+        // Update when the map moves/zooms (better for touch)
+        map.on('move', updateCenterMgrs);
+        map.on('zoomend', updateCenterMgrs);
+        // Still update on mouse move for desktop precision
         map.on('mousemove', function(e) {
-            const lat = e.latlng.lat;
-            const lng = e.latlng.lng;
             try {
                 if (window.mgrs) {
-                    const mgrsRef = window.mgrs.forward([lng, lat]);
+                    const mgrsRef = window.mgrs.forward([e.latlng.lng, e.latlng.lat]);
                     coordDisplay.textContent = `MGRS: ${formatMgrs(mgrsRef)}`;
-                    // Store the raw MGRS value as a data attribute
                     coordDisplay.setAttribute('data-mgrs', mgrsRef);
                 }
             } catch (error) {
@@ -2358,6 +2382,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 coordDisplay.textContent = 'Invalid coordinates';
             }
         });
+        // Initialize display
+        updateCenterMgrs();
 
         // Function to copy MGRS coordinates
         function copyMgrsCoordinates() {
@@ -2992,6 +3018,16 @@ document.addEventListener('DOMContentLoaded', function() {
             measureDistanceBtn.style.display = selectedUnits.length === 2 ? 'block' : 'none';
 
             updateUnitHierarchy();
+
+            // Auto-close sidebar on selection (mobile convenience)
+            try {
+                const sidebar = document.getElementById('sidebar');
+                const overlay = document.getElementById('sidebar-overlay');
+                if (sidebar && sidebar.classList.contains('open')) {
+                    sidebar.classList.remove('open');
+                    if (overlay) overlay.style.display = 'none';
+                }
+            } catch(_){}
         });
         
         // Add context menu listeners
