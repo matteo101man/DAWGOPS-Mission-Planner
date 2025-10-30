@@ -12,6 +12,10 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     <style>
       html, body { height: 100%; margin: 0; }
+      /* Disable selection on iOS to avoid accidental highlights */
+      html, body, #app { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+      /* Allow selection inside editable text markers */
+      .text-marker, .text-marker * { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
       #app { display: grid; grid-template-columns: 280px 1fr; height: 100%; }
       #topbar { display: none; align-items: center; gap: 8px; padding: 10px; border-bottom: 1px solid #eee; }
       #sidebar { padding: 10px; border-right: 1px solid #ddd; overflow: auto; background: #fff; overscroll-behavior: contain; }
@@ -31,7 +35,7 @@
       @media (max-width: 820px) {
         #app { grid-template-columns: 1fr; }
         #topbar { display: flex; padding-top: calc(env(safe-area-inset-top, 0px) + 10px); }
-        #sidebar { position: fixed; top: 0; left: 0; height: 100%; width: 85%; max-width: 360px; z-index: 3000; border-right: 1px solid #ddd; transform: translateX(-100%); transition: transform 0.25s ease; box-shadow: 2px 0 12px rgba(0,0,0,0.15); }
+        #sidebar { position: fixed; top: 0; left: 0; height: 100%; width: 50%; max-width: 300px; z-index: 3000; border-right: 1px solid #ddd; transform: translateX(-100%); transition: transform 0.25s ease; box-shadow: 2px 0 12px rgba(0,0,0,0.15); }
         #sidebar.open { transform: translateX(0); }
         /* Use dynamic viewport to avoid Safari 100vh issues */
         .map-wrapper { position: relative; height: calc(var(--app-vh, 1vh) * 100 - 48px - env(safe-area-inset-bottom, 0px)); padding-bottom: env(safe-area-inset-bottom, 0px); }
@@ -43,6 +47,10 @@
   <body>
     <div id="app">
       <div id="sidebar">
+        <div style="display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; background:#fff; z-index:1; padding-bottom:6px;">
+          <strong>Menu</strong>
+          <button id="toggle-sidebar-in">☰</button>
+        </div>
         <div class="section">
           <label><strong>Go To (MGRS)</strong></label>
           <div style="display:flex; gap:6px;">
@@ -155,9 +163,13 @@
         var btn = document.getElementById('toggle-sidebar');
         var sidebar = document.getElementById('sidebar');
         var overlay = document.getElementById('sidebar-overlay');
+        var btnIn = document.getElementById('toggle-sidebar-in');
         function openSidebar(){ sidebar.classList.add('open'); if (overlay) overlay.style.display='block'; }
         function closeSidebar(){ sidebar.classList.remove('open'); if (overlay) overlay.style.display='none'; }
         if (btn && sidebar) btn.addEventListener('click', function(){
+          if (sidebar.classList.contains('open')) closeSidebar(); else openSidebar();
+        });
+        if (btnIn) btnIn.addEventListener('click', function(){
           if (sidebar.classList.contains('open')) closeSidebar(); else openSidebar();
         });
         if (overlay) overlay.addEventListener('click', closeSidebar);

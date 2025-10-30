@@ -409,6 +409,15 @@ document.addEventListener('DOMContentLoaded', function() {
             unitItems.forEach(i => i.style.outline = '');
             pendingSymbolKey = this.getAttribute('data-symbol-key');
             this.style.outline = '2px solid #3498db';
+            // Close sidebar to allow placing on map immediately
+            try {
+              const sidebar = document.getElementById('sidebar');
+              const overlay = document.getElementById('sidebar-overlay');
+              if (sidebar && sidebar.classList.contains('open')) {
+                sidebar.classList.remove('open');
+                if (overlay) overlay.style.display = 'none';
+              }
+            } catch(_){}
           });
         });
 
