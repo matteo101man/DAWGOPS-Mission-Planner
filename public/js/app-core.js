@@ -1,4 +1,4 @@
-// public/js/app-core.js with text toggle option
+ // public/js/app-core.js with text toggle option
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize Leaflet map
     const mapContainer = document.getElementById('tactical-map');
@@ -397,27 +397,38 @@ document.addEventListener('DOMContentLoaded', function() {
         });
       });
 
+      // Touch devices: tap-to-select symbol, then tap on map to place
+      let pendingSymbolKey = null;
+      const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+      if (isTouch) {
+        unitItems.forEach(item => {
+          item.addEventListener('click', function() {
+            // Clear previous selection styles
+            unitItems.forEach(i => i.style.outline = '');
+            pendingSymbolKey = this.getAttribute('data-symbol-key');
+            this.style.outline = '2px solid #3498db';
+          });
+        });
+
+        map.on('click', function(e) {
+          if (!pendingSymbolKey || !symbolImages[pendingSymbolKey]) return;
+          createUnitFromSymbolAt(e.latlng, pendingSymbolKey);
+          // Clear selection
+          unitItems.forEach(i => i.style.outline = '');
+          pendingSymbolKey = null;
+        });
+      }
+
       // Add drop event listener to the map
       map.getContainer().addEventListener('dragover', function(e) {
         e.preventDefault();
         e.stopPropagation();
       });
 
-      map.getContainer().addEventListener('drop', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-
-        const symbolKey = e.dataTransfer.getData('text/plain');
+      // Helper to create a symbol unit at a given position (used by DnD and touch)
+      function createUnitFromSymbolAt(latlng, symbolKey) {
         if (!symbolKey || !symbolImages[symbolKey]) return;
 
-        // Get the drop coordinates relative to the map
-        const rect = map.getContainer().getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-
-        // Convert screen coordinates to lat/lng
-        const latlng = map.containerPointToLatLng([x, y]);
-        
         // Create a new unit marker
         const unitMarker = L.marker(latlng, {
           icon: L.divIcon({
@@ -470,29 +481,21 @@ document.addEventListener('DOMContentLoaded', function() {
                 const centerX = markerRect.left + markerRect.width/2 - rect.left;
                 const centerY = markerRect.top + markerRect.height/2 - rect.top;
                 startAngle = Math.atan2(e.clientY - rect.top - centerY, e.clientX - rect.left - centerX);
-                
-                // Add mousemove and mouseup listeners to document
                 document.addEventListener('mousemove', handleRotation);
                 document.addEventListener('mouseup', stopRotation);
-                
-                // Change cursor to indicate rotation
                 document.body.style.cursor = 'grab';
             }
         });
 
         function handleRotation(e) {
             if (!isRotating) return;
-            wasRotating = true; // Set flag to indicate we're doing a drag rotation
-            
+            wasRotating = true;
             const rect = map.getContainer().getBoundingClientRect();
             const markerRect = markerElement.getBoundingClientRect();
             const centerX = markerRect.left + markerRect.width/2 - rect.left;
             const centerY = markerRect.top + markerRect.height/2 - rect.top;
-            
             const currentAngle = Math.atan2(e.clientY - rect.top - centerY, e.clientX - rect.left - centerX);
             let angleDiff = (currentAngle - startAngle) * (180 / Math.PI);
-            
-            // Update rotation
             currentRotation = (rotation + angleDiff) % 360;
             container.style.transform = `rotate(${currentRotation}deg)`;
         }
@@ -500,41 +503,32 @@ document.addEventListener('DOMContentLoaded', function() {
         function stopRotation() {
             if (isRotating) {
                 isRotating = false;
-                rotation = currentRotation; // Save the final rotation
-                
-                // Update the unit's state
+                rotation = currentRotation;
                 const unit = placedUnits.find(u => u.marker === unitMarker);
                 if (unit) {
                     unit.rotation = rotation;
                     updateUnitHierarchy();
                 }
-                
-                // Remove event listeners
                 document.removeEventListener('mousemove', handleRotation);
                 document.removeEventListener('mouseup', stopRotation);
-                
-                // Reset cursor
                 document.body.style.cursor = 'default';
             }
         }
 
-        // Keep the click handler for quick 45-degree rotations
         rotateBtn.addEventListener('click', function(e) {
             e.stopPropagation();
-            if (!isLocked && !isRotating && !wasRotating) { // Only do click rotation if we weren't just dragging
+            if (!isLocked && !isRotating && !wasRotating) {
                 rotation = (rotation + 45) % 360;
                 container.style.transform = `rotate(${rotation}deg)`;
-                // Update the unit's state
                 const unit = placedUnits.find(u => u.marker === unitMarker);
                 if (unit) {
                     unit.rotation = rotation;
                     updateUnitHierarchy();
                 }
             }
-            wasRotating = false; // Reset the flag
+            wasRotating = false;
         });
 
-        // Also stop rotation if the mouse leaves the window
         window.addEventListener('blur', stopRotation);
         document.addEventListener('mouseleave', stopRotation);
 
@@ -559,17 +553,13 @@ document.addEventListener('DOMContentLoaded', function() {
           const markerRect = markerElement.getBoundingClientRect();
           const markerX = markerRect.left - rect.left;
           const markerY = markerRect.top - rect.top;
-          
           const dx = x - markerX;
           const dy = y - markerY;
-          const newSize = Math.max(20, Math.min(300, Math.max(Math.abs(dx), Math.abs(dy)))); // Increased max size to 300px
-          
+          const newSize = Math.max(20, Math.min(300, Math.max(Math.abs(dx), Math.abs(dy))));
           img.style.width = `${newSize}px`;
           img.style.height = `${newSize}px`;
-          
-          // Update the container size to match
-          container.style.width = `${newSize + 20}px`; // Add padding
-          container.style.height = `${newSize + 40}px`; // Add extra space for label
+          container.style.width = `${newSize + 20}px`;
+          container.style.height = `${newSize + 40}px`;
         }
 
         function stopResize() {
@@ -589,7 +579,6 @@ document.addEventListener('DOMContentLoaded', function() {
           } else {
             unitMarker.dragging.enable();
           }
-          // Update the unit's state
           const unit = placedUnits.find(u => u.marker === unitMarker);
           if (unit) {
             unit.isLocked = isLocked;
@@ -600,23 +589,18 @@ document.addEventListener('DOMContentLoaded', function() {
         // Click handler for selection
         container.addEventListener('click', function(e) {
           e.stopPropagation();
-          
           if (e.ctrlKey) {
-            // Ctrl + click for multiple selection
             if (selectedUnit === unitMarker) {
-              // Deselect if clicking the same unit
               selectedUnit.getElement().classList.remove('selected');
               selectedUnit = null;
               selectedUnits = selectedUnits.filter(u => u !== unitMarker);
             } else {
-              // Add to selection
               if (!selectedUnits.includes(unitMarker)) {
                 selectedUnits.push(unitMarker);
                 unitMarker.getElement().classList.add('selected');
               }
             }
           } else {
-            // Regular click for single selection
             if (selectedUnit === unitMarker) {
               selectedUnit.getElement().classList.remove('selected');
               selectedUnit = null;
@@ -630,10 +614,7 @@ document.addEventListener('DOMContentLoaded', function() {
               selectedUnits = [unitMarker];
             }
           }
-
-          // Show/hide measure distance button
           measureDistanceBtn.style.display = selectedUnits.length === 2 ? 'block' : 'none';
-
           updateUnitHierarchy();
         });
 
@@ -646,7 +627,6 @@ document.addEventListener('DOMContentLoaded', function() {
             if (newName !== null && newName.trim() !== '') {
               customName = newName.trim();
               label.textContent = customName;
-              // Update the unit's state
               const unit = placedUnits.find(u => u.marker === unitMarker);
               if (unit) {
                 unit.customName = customName;
@@ -656,7 +636,7 @@ document.addEventListener('DOMContentLoaded', function() {
           }
         });
 
-        // Add the unit to the placed units array with additional properties
+        // Track in placedUnits
         placedUnits.push({
           marker: unitMarker,
           symbolKey: symbolKey,
@@ -667,27 +647,20 @@ document.addEventListener('DOMContentLoaded', function() {
           type: 'symbol'
         });
 
-        // Update the unit hierarchy
         updateUnitHierarchy();
-        
-        // Save state after adding unit
         saveState();
-
-        // Add context menu
         addContextMenuListeners(container);
 
-        // Add copy position functionality
+        // Copy position button
         const copyPositionBtn = markerElement.querySelector('.unit-copy-position-btn');
         copyPositionBtn.addEventListener('click', function(e) {
             e.stopPropagation();
-            const latlng = unitMarker.getLatLng();
+            const latlngNow = unitMarker.getLatLng();
             try {
                 if (window.mgrs) {
-                    const mgrsRef = window.mgrs.forward([latlng.lng, latlng.lat]);
+                    const mgrsRef = window.mgrs.forward([latlngNow.lng, latlngNow.lat]);
                     const formattedMgrs = formatMgrs(mgrsRef);
-                    
-                    // Create text marker below the unit
-                    const textMarker = L.marker([latlng.lat, latlng.lng], {
+                    const textMarker = L.marker([latlngNow.lat, latlngNow.lng], {
                         icon: L.divIcon({
                             className: 'text-marker',
                             html: `<div style="background: white; padding: 5px; border-radius: 3px; font-family: monospace;">${formattedMgrs}</div>`,
@@ -695,21 +668,34 @@ document.addEventListener('DOMContentLoaded', function() {
                             iconAnchor: [100, 15]
                         })
                     }).addTo(map);
-
-                    // Add to placed units for hierarchy
-                    placedUnits.push({
-                        marker: textMarker,
-                        type: 'text',
-                        customName: `Position: ${formattedMgrs}`
-                    });
-
-                    // Update hierarchy
+                    placedUnits.push({ marker: textMarker, type: 'text', customName: `Position: ${formattedMgrs}` });
                     updateUnitHierarchy();
                 }
             } catch (error) {
                 console.error('Error converting to MGRS:', error);
             }
         });
+      }
+
+      // Expose for external usage if needed
+      if (!window.TacticalApp) window.TacticalApp = {};
+      window.TacticalApp.createUnitFromSymbol = function(symbolKey, lat, lng) {
+        createUnitFromSymbolAt(L.latLng(lat, lng), symbolKey);
+      };
+
+      // DnD drop support (desktop)
+      map.getContainer().addEventListener('drop', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const symbolKey = e.dataTransfer.getData('text/plain');
+        if (!symbolKey || !symbolImages[symbolKey]) return;
+        const rect = map.getContainer().getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const latlng = map.containerPointToLatLng([x, y]);
+        createUnitFromSymbolAt(latlng, symbolKey);
+
         ignoreNextMapClick = true;
       });
     }
@@ -3016,6 +3002,10 @@ document.addEventListener('DOMContentLoaded', function() {
         const refreshLocationBtn = document.getElementById('refresh-location');
         let watchId = null;
         
+        let followEnabled = ('ontouchstart' in window || navigator.maxTouchPoints > 0); // follow by default on touch devices
+        // Disable follow if user manually drags the map
+        map.on('dragstart', function(){ followEnabled = false; });
+
         function updateLocationDisplay(position) {
             const lat = position.coords.latitude;
             const lng = position.coords.longitude;
@@ -3027,6 +3017,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     yourLocationDisplay.textContent = formattedMgrs;
                     yourLocationDisplay.style.backgroundColor = '#d4edda'; // Light green for success
                     yourLocationDisplay.style.color = '#155724';
+                }
+                // Auto-follow device location on map if enabled
+                if (followEnabled) {
+                    const currentZoom = map.getZoom();
+                    map.setView([lat, lng], currentZoom, { animate: false });
                 }
             } catch (error) {
                 console.error('Error converting GPS to MGRS:', error);
@@ -3070,7 +3065,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     {
                         enableHighAccuracy: true,
                         timeout: 10000,
-                        maximumAge: 60000 // Cache for 1 minute
+                        maximumAge: 0
                     }
                 );
                 
@@ -3081,7 +3076,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     {
                         enableHighAccuracy: true,
                         timeout: 15000,
-                        maximumAge: 30000 // Cache for 30 seconds
+                        maximumAge: 0
                     }
                 );
             } else {
@@ -3101,6 +3096,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Refresh button functionality
         refreshLocationBtn.addEventListener('click', function() {
             stopLocationTracking();
+            followEnabled = true; // re-enable follow on refresh
             startLocationTracking();
         });
         

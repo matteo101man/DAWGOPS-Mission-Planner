@@ -101,7 +101,7 @@
               <textarea class="route-notes-text" placeholder="Enter notes for this route leg..." style="width: 100%; height: 60px; padding: 5px; border: 1px solid #ccc; border-radius: 3px; font-size: 11px; font-family: Arial, sans-serif; resize: vertical;"></textarea>
             </div>
           </div>
-          <div style="display:flex; gap:6px; margin-top:8px;">
+          <div style="display:none; gap:6px; margin-top:8px;">
             <button id="save-route-plan">Save</button>
             <button id="load-route-plan">Load</button>
             <button id="clear-route-plan">Clear</button>
@@ -121,6 +121,7 @@
           <div style="font-weight:bold;">Tactical Planner</div>
         </div>
         <div class="map-wrapper" style="position:relative; height:100%;">
+          <div id="sidebar-overlay" style="display:none; position:fixed; inset:0; background: rgba(0,0,0,0.25); z-index:2000;"></div>
         <div class="grid-info">
           <div id="grid-info">Grid: 1km</div>
           <div id="cursor-position">MGRS: —</div>
@@ -144,15 +145,30 @@
       (function(){
         var btn = document.getElementById('toggle-sidebar');
         var sidebar = document.getElementById('sidebar');
-        if (btn && sidebar) {
-          btn.addEventListener('click', function(){
-            if (sidebar.classList.contains('open')) {
-              sidebar.classList.remove('open');
-            } else {
-              sidebar.classList.add('open');
-            }
-          });
-        }
+        var overlay = document.getElementById('sidebar-overlay');
+        function openSidebar(){ sidebar.classList.add('open'); if (overlay) overlay.style.display='block'; }
+        function closeSidebar(){ sidebar.classList.remove('open'); if (overlay) overlay.style.display='none'; }
+        if (btn && sidebar) btn.addEventListener('click', function(){
+          if (sidebar.classList.contains('open')) closeSidebar(); else openSidebar();
+        });
+        if (overlay) overlay.addEventListener('click', closeSidebar);
+        // Swipe gestures
+        var startX=0, startY=0, tracking=false;
+        window.addEventListener('touchstart', function(e){
+          var t=e.touches[0]; startX=t.clientX; startY=t.clientY; tracking=true;
+        }, {passive:true});
+        window.addEventListener('touchmove', function(e){
+          if(!tracking) return;
+        }, {passive:true});
+        window.addEventListener('touchend', function(e){
+          if(!tracking) return; tracking=false; var dx=(e.changedTouches[0].clientX - startX); var dy=Math.abs(e.changedTouches[0].clientY - startY);
+          if (dy < 80) {
+            // Open if swipe right from left edge
+            if (!sidebar.classList.contains('open') && startX < 24 && dx > 60) { openSidebar(); }
+            // Close if swipe left while open
+            if (sidebar.classList.contains('open') && dx < -60) { closeSidebar(); }
+          }
+        }, {passive:true});
       })();
     </script>
   </body>
