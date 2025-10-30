@@ -1,4 +1,4 @@
-const CACHE_NAME = 'planner-cache-v1';
+const CACHE_NAME = 'planner-cache-v2';
 const ASSETS = [
   './',
   './app.html',
@@ -22,6 +22,31 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
+  const url = new URL(req.url);
+
+  // Always try network first for critical changing assets
+  const networkFirst = (
+    url.pathname.endsWith('/symbols/index.json') ||
+    url.pathname.endsWith('/public/js/app-core.js') ||
+    url.searchParams.get('v') === 'debug'
+  );
+
+  if (networkFirst) {
+    event.respondWith((async () => {
+      try {
+        const fresh = await fetch(req, { cache: 'no-store' });
+        const copy = fresh.clone();
+        const cache = await caches.open(CACHE_NAME);
+        cache.put(req, copy);
+        return fresh;
+      } catch (e) {
+        const cached = await caches.match(req);
+        return cached || Response.error();
+      }
+    })());
+    return;
+  }
+
   event.respondWith(
     caches.match(req).then((cached) => cached || fetch(req).then((res) => {
       const copy = res.clone();
