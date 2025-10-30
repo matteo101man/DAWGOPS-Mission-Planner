@@ -4,6 +4,11 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Planner</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Planner">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     <style>
       html, body { height: 100%; margin: 0; }
@@ -131,6 +136,10 @@
     <script>window.mgrs = mgrs;</script>
     <script src="public/js/app-core.js"></script>
     <script>
+      // Register service worker for PWA/offline and standalone fullscreen
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
+      }
       // Sidebar toggle for mobile
       (function(){
         var btn = document.getElementById('toggle-sidebar');
