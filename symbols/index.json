@@ -1,1 +1,27 @@
-{  "symbols": [\"Assault 1.png\",\"Assault 2.png\",\"Attack By Fire.png\",\"Automatic Rifleman.png\",\"Axis of Approach.png\",\"Enemy Squad.png\",\"Fireteam.png\",\"Light MG.png\",\"Medium MG.png\",\"Objective.png\",\"Observation Post.png\",\"ORP.png\",\"Patrol Base.png\",\"Platoon Squad Column Fireteam Wedge.png\",\"Rally Point.png\",\"Rifleman.png\",\"Security SQD.png\",\"Security.png\",\"Squad Column Fireteam Wedge.png\",\"Start Point.png\",\"Support By Fire.png\",\"TRP.png\",\"Weapons SQD.png\"]}
+﻿{
+    "symbols":  [
+                    "Assault 1.png",
+                    "Assault 2.png",
+                    "Attack By Fire.png",
+                    "Automatic Rifleman.png",
+                    "Axis of Approach.png",
+                    "Enemy Squad.png",
+                    "Fireteam.png",
+                    "Light MG.png",
+                    "Medium MG.png",
+                    "Objective.png",
+                    "Observation Post.png",
+                    "ORP.png",
+                    "Patrol Base.png",
+                    "Platoon Squad Column Fireteam Wedge.png",
+                    "Rally Point.png",
+                    "Rifleman.png",
+                    "Security SQD.png",
+                    "Security.png",
+                    "Squad Column Fireteam Wedge.png",
+                    "Start Point.png",
+                    "Support By Fire.png",
+                    "TRP.png",
+                    "Weapons SQD.png"
+                ]
+}
