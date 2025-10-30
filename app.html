@@ -1,0 +1,119 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Planner</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <style>
+      html, body { height: 100%; margin: 0; }
+      #app { display: grid; grid-template-columns: 280px 1fr; height: 100%; }
+      #sidebar { padding: 10px; border-right: 1px solid #ddd; overflow: auto; }
+      #tactical-map { width: 100%; height: 100%; position: relative; }
+      .section { margin-bottom: 14px; }
+      .grid-info { position: absolute; top: 10px; left: 10px; z-index: 1000; display: flex; gap: 20px; }
+      .palette { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+      .unit-item { display: flex; flex-direction: column; align-items: center; padding: 6px; border: 1px solid #ddd; border-radius: 4px; background: #fafafa; }
+      .hierarchy { max-height: 200px; overflow: auto; border: 1px solid #ddd; padding: 6px; border-radius: 4px; }
+      .controls button { margin: 2px 0; width: 100%; }
+      .route { border-top: 1px solid #eee; padding-top: 10px; }
+      .context-menu { position: absolute; background: #fff; border: 1px solid #ccc; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); z-index: 2000; }
+      .context-menu-item { padding: 8px 12px; cursor: pointer; }
+      .context-menu-item:hover { background: #f5f5f5; }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div id="sidebar">
+        <div class="section">
+          <label><strong>Go To (MGRS)</strong></label>
+          <div style="display:flex; gap:6px;">
+            <input id="mgrs-input" type="text" placeholder="17S KT 85128 53610" style="flex:1;">
+            <button id="goto-location">Go</button>
+          </div>
+        </div>
+
+        <div class="section controls">
+          <button id="measure-distance">Measure Distance</button>
+          <button id="add-text">Add Text</button>
+          <button id="export-image">Export Image</button>
+          <button id="clear-units">Clear Units</button>
+        </div>
+
+        <div class="section">
+          <strong>Text Formatting</strong>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; margin-top:6px;">
+            <label>Text<br><input id="text-color" type="color" value="#000000"></label>
+            <label>Background<br><input id="text-bg-color" type="color" value="#ffffff"></label>
+          </div>
+          <div style="margin-top:6px;">
+            <label>Size <input id="text-size" type="range" min="10" max="36" value="14" style="width:100%"></label>
+          </div>
+        </div>
+
+        <div class="section">
+          <strong>Unit Palette</strong>
+          <div id="unit-palette" class="palette"></div>
+        </div>
+
+        <div class="section">
+          <strong>Unit Hierarchy</strong>
+          <div id="unit-hierarchy" class="hierarchy"></div>
+        </div>
+
+        <div class="section route">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <strong>Route Plan</strong>
+            <button id="add-route-leg" style="padding:2px 6px;">Add Leg</button>
+          </div>
+          <div id="route-plan-list" style="margin-top:8px;">
+            <div class="route-leg" data-leg="1">
+              <input type="text" class="route-from" placeholder="From" style="width: 45px;">
+              <span>→</span>
+              <input type="text" class="route-to" placeholder="To" style="width: 45px;">
+              <span>(</span>
+              <input type="number" class="route-distance" placeholder="m" style="width: 50px;">
+              <span>m,</span>
+              <input type="number" class="route-azimuth" placeholder="°" style="width: 50px;">
+              <span>°,</span>
+              <input type="text" class="route-direction" placeholder="dir" style="width: 30px;">
+              <span>)</span>
+              <button class="route-notes-btn" style="margin-left: 3px; padding: 1px 4px; background: #27ae60; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 10px;">+</button>
+              <button class="route-remove-btn" style="margin-left: 3px; padding: 1px 4px; background: #e74c3c; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 10px;">-</button>
+            </div>
+            <div class="route-notes" style="display: none; margin-top: 5px; margin-bottom: 8px;">
+              <textarea class="route-notes-text" placeholder="Enter notes for this route leg..." style="width: 100%; height: 60px; padding: 5px; border: 1px solid #ccc; border-radius: 3px; font-size: 11px; font-family: Arial, sans-serif; resize: vertical;"></textarea>
+            </div>
+          </div>
+          <div style="display:flex; gap:6px; margin-top:8px;">
+            <button id="save-route-plan">Save</button>
+            <button id="load-route-plan">Load</button>
+            <button id="clear-route-plan">Clear</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <strong>Your Location</strong>
+          <div id="your-location-mgrs" style="padding:6px; border:1px solid #ddd; border-radius:4px; margin-top:6px;">—</div>
+          <button id="refresh-location" style="margin-top:6px; width:100%;">Refresh Location</button>
+        </div>
+      </div>
+
+      <div style="position:relative;">
+        <div class="grid-info">
+          <div id="grid-info">Grid: 1km</div>
+          <div id="cursor-position">MGRS: —</div>
+        </div>
+        <div id="tactical-map"></div>
+      </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mgrs@2.1.0/dist/mgrs.min.js"></script>
+    <script>window.mgrs = mgrs;</script>
+    <script src="public/js/app-core.js"></script>
+  </body>
+</html>
+
+

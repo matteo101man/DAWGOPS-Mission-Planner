@@ -1,0 +1,959 @@
+/* public/css/styles.css */
+/* General Styles */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+  
+  body {
+    font-family: 'Arial', sans-serif;
+    line-height: 1.6;
+    color: #333;
+    background-color: #f4f4f4;
+  }
+  
+  .container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+  
+  header {
+    text-align: center;
+    margin-bottom: 30px;
+  }
+  
+  .header-content {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    margin-bottom: 10px;
+  }
+  
+  .header-logo {
+    height: 50px;
+    width: auto;
+  }
+  
+  header h1 {
+    color: #000;
+    margin-bottom: 10px;
+    font-size: 2.5em;
+    letter-spacing: 2px;
+  }
+  
+  header p {
+    color: #666;
+  }
+  
+  /* Tab Styles */
+  .tab-container {
+    background: #fff;
+    border-radius: 5px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    margin-bottom: 30px;
+    overflow: hidden;
+  }
+  
+  .tabs {
+    display: flex;
+    background-color: #222;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  
+  .tab-btn {
+    background: none;
+    border: none;
+    color: #ecf0f1;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: 500;
+    padding: 15px 20px;
+    transition: background-color 0.3s;
+  }
+  
+  .tab-btn:hover {
+    background-color: #333;
+  }
+  
+  .tab-btn.active {
+    background-color: #000;
+  }
+  
+  .tab-content {
+    padding: 20px;
+  }
+  
+  .tab-pane {
+    display: none;
+  }
+  
+  .tab-pane.active {
+    display: block;
+  }
+  
+  /* Planning Container */
+  .planning-container {
+    display: flex;
+    gap: 20px;
+    margin-top: 20px;
+    height: calc(100vh - 200px);
+    min-height: 600px;
+  }
+  
+  .control-panel {
+    flex: 0 0 300px;
+    background-color: #fff;
+    padding: 20px;
+    border-radius: 5px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  }
+  
+  .unit-hierarchy-container {
+    flex: 0 0 300px;
+    background-color: #fff;
+    padding: 20px;
+    border-radius: 5px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    height: fit-content;
+  }
+  
+  .map-container {
+    flex: 1;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    margin: 0 20px;
+    position: relative;
+    min-height: 600px;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  /* Form Styles */
+  .form-section {
+    margin-bottom: 30px;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 20px;
+  }
+  
+  .form-section:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+  }
+  
+  h2 {
+    color: #2c3e50;
+    margin-bottom: 20px;
+  }
+  
+  h3 {
+    color: #34495e;
+    margin-bottom: 15px;
+    font-size: 1.2em;
+  }
+  
+  h4 {
+    color: #7f8c8d;
+    margin-bottom: 10px;
+    font-size: 1em;
+  }
+  
+  .form-group {
+    margin-bottom: 15px;
+  }
+  
+  label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+    color: #2c3e50;
+  }
+  
+  input[type="text"],
+  input[type="range"],
+  select,
+  textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 16px;
+  }
+  
+  textarea {
+    resize: vertical;
+  }
+  
+  /* Enhanced Unit Palette Styles */
+  .unit-palette {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    padding: 10px;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+    max-height: 400px;
+    overflow-y: auto;
+  }
+  
+  .unit-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 5px;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    width: 70px;
+    height: 90px;
+    margin: 0 auto;
+  }
+  
+  .unit-item:hover {
+    background-color: #f0f0f0;
+    border-color: #000;
+    transform: translateY(-2px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+  
+  .unit-item img {
+    width: 40px;
+    height: 40px;
+    object-fit: contain;
+    margin-bottom: 5px;
+  }
+  
+  .unit-item span {
+    display: block;
+    font-size: 10px;
+    text-align: center;
+    color: #333;
+    line-height: 1.1;
+    max-height: 35px;
+    overflow-wrap: break-word;
+    width: 100%;
+    padding: 0 2px;
+    overflow: hidden;
+  }
+  
+  .unit-item.dragging {
+    opacity: 0.5;
+    background-color: #e3f2fd;
+  }
+  
+  .unit-preview {
+    pointer-events: none;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
+    padding: 10px;
+    background: white;
+    z-index: 9999;
+  }
+  
+  /* Context Menu Styles */
+  .context-menu {
+    position: fixed;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    z-index: 1000;
+    min-width: 150px;
+  }
+  
+  .context-menu-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+  
+  .context-menu-item:hover {
+    background-color: #f0f0f0;
+  }
+  
+  .text-marker {
+    background: none;
+    border: none;
+  }
+  
+  .text-marker div {
+    font-family: monospace;
+    font-size: 14px;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  
+  /* Enhanced Map Styles */
+  .tactical-map {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    min-height: 600px;
+    background-color: #f5f5f5;
+    cursor: move; /* indicates the map is draggable */
+  }
+  
+  .tactical-map .leaflet-container {
+    width: 100%;
+    height: 100%;
+    background-color: #f5f5f5;
+  }
+
+  /* Grid overlay styles */
+  .grid-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1000;
+  }
+
+  .grid-line {
+    stroke: #666666;
+    stroke-width: 1;
+    fill: none;
+  }
+
+  .grid-label {
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    fill: #333333;
+    pointer-events: none;
+  }
+  
+  .grid-info {
+    position: absolute;
+    bottom: 770px;
+    right: 320px;
+    background-color: rgba(52, 73, 94, 0.9);
+    color: white;
+    padding: 4px 8px;
+    font-family: monospace;
+    font-size: 12px;
+    white-space: nowrap;
+    z-index: 1000;
+    transform: translateX(150px);
+    display: flex;
+    gap: 15px;
+    align-items: center;
+  }
+  
+  .grid-info span {
+    padding: 2px 4px;
+    border-radius: 2px;
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+  
+  /* TRP Info Table Styles */
+  .trp-info-table {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background-color: rgba(0, 0, 0, 0.9);
+    color: white;
+    padding: 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: 'Courier New', monospace;
+    white-space: nowrap;
+    z-index: 1001;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    border: 1px solid #666;
+  }
+  
+  .trp-info-table table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+  
+  .trp-info-table td {
+    padding: 2px 4px;
+    vertical-align: top;
+  }
+  
+  .trp-info-table td:first-child {
+    color: #ffd700;
+    font-weight: bold;
+    text-align: right;
+    padding-right: 8px;
+  }
+  
+  .trp-info-table td:last-child {
+    color: #fff;
+    text-align: left;
+  }
+  
+  /* TRP Marker specific styles */
+  .trp-marker .unit-container {
+    position: relative;
+  }
+  
+  /* Route Plan Styles */
+  .route-plan-container {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+  
+  .route-leg {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-bottom: 8px;
+    padding: 6px;
+    background-color: white;
+    border-radius: 4px;
+    border: 1px solid #e0e0e0;
+    flex-wrap: wrap;
+    min-height: 32px;
+  }
+  
+  .route-leg input {
+    padding: 3px 4px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    font-size: 11px;
+    font-family: 'Courier New', monospace;
+    max-width: 100%;
+  }
+  
+  .route-leg input:focus {
+    outline: none;
+    border-color: #3498db;
+    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+  }
+  
+  .route-leg span {
+    font-size: 12px;
+    color: #666;
+    font-weight: bold;
+  }
+  
+  .route-remove-btn {
+    font-size: 14px;
+    font-weight: bold;
+    transition: background-color 0.2s;
+  }
+  
+  .route-remove-btn:hover {
+    background-color: #c0392b !important;
+  }
+  
+  .route-plan-example {
+    border-bottom: 1px solid #e0e0e0;
+    padding-bottom: 8px;
+  }
+  
+  .map-tools {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    z-index: 1000;
+    display: flex;
+    gap: 10px;
+    background-color: rgba(255, 255, 255, 0.9);
+    padding: 10px;
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    align-items: center;
+  }
+  
+  /* Modal Styles for Rename */
+  .modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+    z-index: 1000;
+    justify-content: center;
+    align-items: center;
+  }
+  
+  .modal-content {
+    background-color: white;
+    padding: 20px;
+    border-radius: 8px;
+    min-width: 300px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+  }
+  
+  .modal-title {
+    margin-bottom: 15px;
+    font-size: 18px;
+    color: #2c3e50;
+  }
+  
+  .modal-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 20px;
+  }
+  
+  /* Button Styles */
+  .btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background-color 0.2s;
+  }
+  
+  .btn-primary {
+    background-color: #2980b9;
+    color: white;
+  }
+  
+  .btn-primary:hover {
+    background-color: #3498db;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+  }
+  
+  .btn-secondary {
+    background-color: #2c3e50;
+    color: white;
+  }
+  
+  .btn-secondary:hover {
+    background-color: #34495e;
+  }
+  
+  .btn-tertiary {
+    background-color: #fff;
+    color: #333;
+    border: 1px solid #ddd;
+  }
+  
+  .btn-tertiary:hover {
+    background-color: #f0f0f0;
+  }
+  
+  .btn-danger {
+    background-color: #e74c3c;
+    color: white;
+  }
+  
+  .btn-danger:hover {
+    background-color: #c0392b;
+  }
+  
+  .btn-neutral {
+    background-color: #ecf0f1;
+    color: #2c3e50;
+    border: 1px solid #bdc3c7;
+  }
+  
+  .btn-neutral:hover {
+    background-color: #bdc3c7;
+    transform: translateY(-2px);
+  }
+  
+  .btn.active {
+    background-color: #2c3e50;
+  }
+  
+  .btn:disabled {
+    background-color: #bdc3c7;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+  
+  /* Reference Styles */
+  .reference-content {
+    padding: 15px;
+    background-color: #f9f9f9;
+    border-radius: 5px;
+  }
+  
+  .mission-reference-item {
+    margin-bottom: 20px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid #eee;
+  }
+  
+  .mission-reference-item:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+  }
+  
+  /* Tooltip for controls */
+  .tooltip {
+    position: absolute;
+    background-color: rgba(0,0,0,0.7);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    z-index: 1000;
+    pointer-events: none;
+  }
+
+  /* Lock button styles */
+.hierarchy-lock-btn {
+  background: none;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 3px;
+  transition: opacity 0.2s;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hierarchy-lock-btn:hover {
+  opacity: 1 !important;
+}
+
+/* Style for locked items in the hierarchy */
+.hierarchy-item.locked {
+  background-color: #f2f2f2;
+  position: relative;
+}
+
+.hierarchy-item.locked::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(200, 200, 200, 0.1);
+  pointer-events: none;
+  border-left: 3px solid #e74c3c;
+}
+
+.hierarchy-item.locked .hierarchy-name {
+  color: #777;
+}
+
+/* Make it clear when an item is both locked and selected */
+.hierarchy-item.locked.selected {
+  background-color: #f8e5e5;
+}
+
+/* Visual style for lock button when active */
+.hierarchy-item.locked .hierarchy-lock-btn {
+  color: #e74c3c;
+}
+
+/* Adjust the action buttons to accommodate the new lock button */
+.hierarchy-actions {
+  display: flex;
+  gap: 3px;
+}
+  
+  /* Responsive Styles */
+  @media (max-width: 992px) {
+    .planning-container {
+      flex-direction: column;
+    }
+    
+    .control-panel {
+      flex: 0 0 auto;
+    }
+  }
+  
+  @media (max-width: 768px) {
+    .tabs {
+      flex-direction: column;
+    }
+    
+    .tab-btn {
+      width: 100%;
+      text-align: left;
+    }
+  
+    .symbol-container {
+      justify-content: center;
+    }
+    
+    .unit-item {
+      width: 110px;
+      height: 100px;
+    }
+  }
+
+/* Unit marker styles */
+.unit-marker {
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.unit-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 5px;
+  transition: transform 0.2s ease;
+}
+
+.unit-container:hover {
+  transform: scale(1.1);
+}
+
+.unit-label {
+  font-size: 12px;
+  font-weight: bold;
+  margin-top: 5px;
+  text-align: center;
+  white-space: nowrap;
+  color: #333;
+  text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.8);
+  background-color: rgba(255, 255, 255, 0.8);
+  padding: 2px 4px;
+  border-radius: 2px;
+  display: block;
+  transition: opacity 0.2s ease;
+}
+
+.unit-label[style*="display: none"] {
+  opacity: 0;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* Adjust controls position when label is hidden */
+.unit-container:has(.unit-label[style*="display: none"]) .unit-controls {
+  top: -5px;
+}
+
+/* Ensure controls remain visible when unit is selected */
+.unit-marker.selected .unit-controls {
+  opacity: 1;
+  visibility: visible;
+  background-color: #f0f0f0;
+}
+
+.unit-controls {
+  position: absolute;
+  top: 45px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 5px;
+  background-color: rgba(255, 255, 255, 0.9);
+  padding: 5px;
+  border-radius: 5px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.unit-rotate-btn,
+.unit-lock-btn,
+.unit-resize-btn,
+.unit-copy-position-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  color: #666;
+  padding: 2px 5px;
+  border-radius: 3px;
+  transition: all 0.2s ease;
+}
+
+.unit-rotate-btn:hover,
+.unit-lock-btn:hover,
+.unit-resize-btn:hover,
+.unit-copy-position-btn:hover {
+  background-color: #f0f0f0;
+  color: #333;
+}
+
+.unit-lock-btn.active {
+  color: #e74c3c;
+}
+
+/* Unit Hierarchy Styles */
+.hierarchy-actions {
+  display: flex;
+  gap: 5px;
+  margin-left: auto;
+}
+
+.hierarchy-rename-btn,
+.hierarchy-lock-btn,
+.hierarchy-delete-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  color: #666;
+  padding: 2px 5px;
+  border-radius: 3px;
+  transition: all 0.2s ease;
+}
+
+.hierarchy-rename-btn:hover,
+.hierarchy-lock-btn:hover,
+.hierarchy-delete-btn:hover {
+  background-color: #f0f0f0;
+  color: #333;
+}
+
+.hierarchy-lock-btn.active {
+  color: #e74c3c;
+}
+
+.clear-units-btn {
+  width: 100%;
+  padding: 8px;
+  margin-top: 15px;
+  background-color: #e74c3c;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: background-color 0.2s ease;
+}
+
+.clear-units-btn:hover {
+  background-color: #c0392b;
+}
+
+.unit-hierarchy-container {
+  width: 300px;
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  height: fit-content;
+  margin-top: 20px;
+}
+
+.unit-hierarchy {
+  max-height: 400px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+}
+
+/* Remove old map controls styles */
+.map-controls,
+.map-tools {
+  display: none;
+}
+
+/* Adjust map container */
+#tactical-map {
+  width: 100%;
+  height: 100%;
+  min-height: 600px;
+  border-radius: 8px;
+  z-index: 1;
+}
+
+/* Update other color references from blue to black */
+.measurement-marker {
+    background-color: #000;
+}
+
+.measurement-line {
+    background-color: #000;
+}
+
+/* Update any remaining blue colors to black */
+.unit-marker.selected .unit-controls {
+    background-color: #f0f0f0;
+}
+
+.hierarchy-item.selected {
+    background-color: #f0f0f0;
+}
+
+.hierarchy-item:hover {
+    background-color: #f0f0f0;
+}
+
+.location-input {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+    width: 100%;
+  }
+
+  .location-input input {
+    flex: 1;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    background-color: #fff;
+  }
+
+  .location-input button {
+    padding: 8px 16px;
+    white-space: nowrap;
+  }
+
+  /* Remove old location box styles */
+  .location-box,
+  .location-box label,
+  .location-box input,
+  .location-box button {
+    /* intentionally left empty to remove old styles */
+  }
+
+/* Distance Measurement Styles */
+.distance-line {
+    stroke: #000;
+    stroke-width: 2;
+    stroke-dasharray: 5, 5;
+    fill: none;
+    pointer-events: none;
+}
+
+.distance-text {
+    font-size: 12px;
+    font-weight: bold;
+    fill: #000;
+    background-color: rgba(255, 255, 255, 0.8);
+    padding: 2px 4px;
+    border-radius: 2px;
+    pointer-events: none;
+    text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.8);
+}
+
+.measure-distance-btn {
+    display: none;
+    position: fixed;
+    background-color: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 8px 16px;
+    cursor: pointer;
+    font-size: 14px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+}
+
+.measure-distance-btn:hover {
+    background-color: #f0f0f0;
+}

@@ -1,0 +1,481 @@
+<!-- public/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dawg Ops - Mission Planner</title>
+  <link rel="icon" type="image/png" href="images/favicon.png">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/mgrs@1.0.0/dist/mgrs.js"></script>
+  <link rel="stylesheet" href="css/styles.css">
+  <!-- Add Mapbox GL JS -->
+  <script src='https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js'></script>
+  <link href='https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css' rel='stylesheet' />
+  <!-- Add Leaflet.TileLayer.GL -->
+  <script src="https://unpkg.com/leaflet-tilelayer-gl@0.17.0/dist/leaflet-tilelayer-gl.js"></script>
+  <style>
+     /* Make text unselectable throughout the page */
+  body {
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+  }
+  
+  /* Style for text formatting controls */
+  .text-formatting {
+    background-color: #f8f9fa;
+    padding: 10px 15px;
+    border-top: 1px solid #ddd;
+    display: flex;
+    gap: 20px;
+    align-items: center;
+  }
+  
+  .text-formatting .form-group {
+    display: flex;
+    align-items: center;
+    margin-bottom: 0;
+  }
+  
+  .text-formatting label {
+    margin-right: 8px;
+    margin-bottom: 0;
+    white-space: nowrap;
+  }
+  
+  .color-picker {
+    width: 40px;
+    height: 25px;
+    padding: 0;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+  }
+  
+  /* Fix for scrolling issue */
+  .hierarchy-item {
+    scroll-margin-top: 50px;
+  }
+  
+  /* Make unit hierarchy scrollable without affecting page */
+  .unit-hierarchy {
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+  
+  /* Style for the toggle text button */
+  .hierarchy-toggle-btn {
+    opacity: 0.4; /* Default state is "off" since labels are hidden by default */
+  }
+  
+  /* Additional responsive layout improvements */
+  @media (max-width: 768px) {
+    .text-formatting {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 10px;
+    }
+    
+    .text-formatting .form-group {
+      justify-content: space-between;
+    }
+  }
+    /* Additional styles for unit hierarchy */
+    .unit-hierarchy {
+      max-height: 200px;
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      background-color: #f9f9f9;
+      padding: 5px;
+      margin-top: 10px;
+    }
+    
+    .hierarchy-empty {
+      text-align: center;
+      color: #999;
+      font-style: italic;
+      padding: 10px;
+    }
+    
+    .hierarchy-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    
+    .hierarchy-item {
+      padding: 5px;
+      border-bottom: 1px solid #eee;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    
+    .hierarchy-item:last-child {
+      border-bottom: none;
+    }
+    
+    .hierarchy-item:hover {
+      background-color: #f0f7ff;
+    }
+    
+    .hierarchy-item.selected {
+      background-color: #e3f2fd;
+    }
+    
+    .hierarchy-unit {
+      display: flex;
+      align-items: center;
+    }
+    
+    .hierarchy-icon {
+      width: 20px;
+      height: 20px;
+      object-fit: contain;
+      margin-right: 8px;
+    }
+    
+    .hierarchy-name {
+      flex: 1;
+      font-size: 12px;
+    }
+    
+    .hierarchy-delete-btn {
+      background: none;
+      border: none;
+      color: #e74c3c;
+      font-size: 16px;
+      cursor: pointer;
+      padding: 0 5px;
+      opacity: 0.7;
+      transition: opacity 0.2s;
+    }
+    
+    .hierarchy-delete-btn:hover {
+      opacity: 1;
+    }
+
+    .tab-container {
+      width: 100%;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 5px;
+      padding: 10px;
+      background: #f5f5f5;
+    }
+
+    .tab-btn {
+      padding: 8px 16px;
+      border: none;
+      background: #ddd;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+
+    .tab-btn.active {
+      background: #4CAF50;
+      color: white;
+    }
+
+    .tab-content {
+      flex: 1;
+      position: relative;
+      overflow: hidden; /* Contain the tab panes */
+    }
+
+    .tab-pane {
+      display: none;
+      height: 100%;
+      overflow-y: auto; /* Enable scrolling */
+      padding: 20px;
+      position: absolute; /* Position absolutely within tab-content */
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+    }
+
+    .tab-pane.active {
+      display: block;
+    }
+
+    .reference-content {
+      max-width: 800px;
+      margin: 0 auto;
+      padding-bottom: 40px; /* Add some bottom padding for better scrolling */
+    }
+
+    .mission-reference-item {
+      margin-bottom: 30px;
+      padding: 20px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      background: white;
+      transition: background-color 0.3s ease;
+    }
+
+    .mission-reference-item h3 {
+      margin-top: 0;
+      color: #2c3e50;
+      border-bottom: 2px solid #4CAF50;
+      padding-bottom: 10px;
+    }
+
+    .mission-reference-item h4 {
+      color: #34495e;
+      margin: 15px 0 10px;
+    }
+
+    .mission-reference-item ul {
+      margin: 10px 0;
+      padding-left: 20px;
+    }
+
+    .mission-reference-item li {
+      margin: 5px 0;
+      line-height: 1.4;
+    }
+
+    .mission-reference-item p {
+      line-height: 1.6;
+      margin: 10px 0;
+    }
+
+    /* Ensure the planning tab's map container fills available space */
+    #planning {
+      position: relative !important; /* Override absolute positioning for this tab */
+    }
+
+    .planning-container {
+      height: 100%;
+      display: flex;
+    }
+
+    /* Compass styles */
+    .compass-container {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      z-index: 1000;
+      pointer-events: none;
+      opacity: 0.8;
+    }
+    
+    .compass {
+      width: 60px;
+      height: 60px;
+      background: rgba(255, 255, 255, 0.7);
+      border-radius: 50%;
+      border: 2px solid rgba(0, 0, 0, 0.2);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      position: relative;
+    }
+    
+    .compass-arrow {
+      position: absolute;
+      width: 2px;
+      height: 50%;
+      background: linear-gradient(to bottom, red 50%, black 50%);
+      transform-origin: bottom center;
+    }
+    
+    .compass-labels {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+    }
+    
+    .compass-label {
+      position: absolute;
+      font-weight: bold;
+      font-size: 12px;
+    }
+    
+    .compass-label.n { top: 3px; left: 50%; transform: translateX(-50%); }
+    .compass-label.s { bottom: 3px; left: 50%; transform: translateX(-50%); }
+    .compass-label.e { right: 3px; top: 50%; transform: translateY(-50%); }
+    .compass-label.w { left: 3px; top: 50%; transform: translateY(-50%); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="header-content">
+        <h1>DAWG OPS</h1>
+        <img src="images/logo.png" alt="Dawg Ops Logo" class="header-logo">
+      </div>
+      <p>Mission Planning Tool (CDT Garza)</p>
+    </header>
+
+    <div class="tab-container">
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="planning">Mission Planning</button>
+            <button class="tab-btn" data-tab="reference">Doctrine Reference</button>
+            <button class="tab-btn" data-tab="help">Help</button>
+        </div>
+        
+        <div class="tab-content">
+            <!-- Mission Planning Tab -->
+            <div class="tab-pane active" id="planning">
+                <div class="planning-container">
+                    <div class="control-panel">
+                        <div class="form-section">
+                            <h3>Unit Palette</h3>
+                            <div id="unit-palette" class="unit-palette">
+                                <!-- Units will be dynamically loaded from the symbols folder -->
+                            </div>
+                        </div>
+                    </div>
+                    <div class="map-container">
+                        <div id="tactical-map" class="tactical-map">
+                            <!-- Add compass container -->
+                            <div class="compass-container">
+                                <div class="compass">
+                                    <div class="compass-arrow"></div>
+                                    <div class="compass-labels">
+                                        <div class="compass-label n">N</div>
+                                        <div class="compass-label s">S</div>
+                                        <div class="compass-label e">E</div>
+                                        <div class="compass-label w">W</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="grid-info">
+                            <span id="cursor-position">MGRS: 00000000</span>
+                        </div>
+                        <div class="map-tools">
+                            <button id="measure-distance" class="btn btn-tertiary">Measure Distance</button>
+                            <button id="add-text" class="btn btn-tertiary">Add Text</button>
+                            <button id="export-image" class="btn btn-secondary">Export Image</button>
+                            <button id="clear-units" class="btn btn-danger">Clear Units</button>
+                        </div>
+                    </div>
+                    <div class="unit-hierarchy-container">
+                        <div class="form-section">
+                            <h3>Placed Units</h3>
+                            <div id="unit-hierarchy" class="unit-hierarchy">
+                                <!-- Units will be dynamically loaded here -->
+                            </div>
+                            <div class="form-section">
+                                <h3>Location</h3>
+                                <div class="location-input">
+                                    <input type="text" id="mgrs-input" placeholder="Enter MGRS (e.g. 17S KT 85128 53610)">
+                                    <button id="goto-location" class="btn btn-secondary">Go To</button>
+                                </div>
+                            </div>
+                            <div class="form-section">
+                                <h3>Your Location</h3>
+                                <div class="your-location-display">
+                                    <div id="your-location-mgrs" style="font-family: monospace; padding: 8px; background-color: #f0f0f0; border-radius: 4px; text-align: center; margin-bottom: 5px;">
+                                        Getting location...
+                                    </div>
+                                    <button id="refresh-location" class="btn btn-tertiary" style="width: 100%;">Refresh Location</button>
+                                </div>
+                            </div>
+                            
+                            <div class="form-section">
+                                <h3>Route Plan</h3>
+                                <div class="route-plan-container">
+                                    <div class="route-plan-example" style="color: #999; font-style: italic; margin-bottom: 10px; font-size: 12px;">
+                                        Example: Point 1 → Point 2 (100m, 250°, NW)
+                                    </div>
+                                    <div id="route-plan-list">
+                                        <div class="route-leg" data-leg="1">
+                                            <input type="text" class="route-from" placeholder="From" style="width: 45px;">
+                                            <span>→</span>
+                                            <input type="text" class="route-to" placeholder="To" style="width: 45px;">
+                                            <span>(</span>
+                                            <input type="number" class="route-distance" placeholder="m" style="width: 50px;">
+                                            <span>m,</span>
+                                            <input type="number" class="route-azimuth" placeholder="°" style="width: 50px;">
+                                            <span>°,</span>
+                                            <input type="text" class="route-direction" placeholder="dir" style="width: 30px;">
+                                            <span>)</span>
+                                            <button class="route-notes-btn" style="margin-left: 3px; padding: 1px 4px; background: #27ae60; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 10px;">+</button>
+                                            <button class="route-remove-btn" style="margin-left: 3px; padding: 1px 4px; background: #e74c3c; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 10px;">-</button>
+                                        </div>
+                                        <div class="route-notes" style="display: none; margin-top: 5px; margin-bottom: 8px;">
+                                            <textarea class="route-notes-text" placeholder="Enter notes for this route leg..." style="width: 100%; height: 60px; padding: 5px; border: 1px solid #ccc; border-radius: 3px; font-size: 11px; font-family: Arial, sans-serif; resize: vertical;"></textarea>
+                                        </div>
+                                        </div>
+                                    </div>
+                                    <button id="add-route-leg" class="btn btn-tertiary" style="width: 100%; margin-top: 10px;">+ Add Route Leg</button>
+                                    <div class="route-plan-controls" style="margin-top: 10px; display: flex; gap: 5px;">
+                                        <button id="save-route-plan" class="btn btn-primary" style="flex: 1; font-size: 11px;">Save</button>
+                                        <button id="load-route-plan" class="btn btn-secondary" style="flex: 1; font-size: 11px;">Load</button>
+                                        <button id="clear-route-plan" class="btn btn-danger" style="flex: 1; font-size: 11px;">Clear</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Doctrine Reference Tab -->
+            <div class="tab-pane" id="reference">
+                <h2>Doctrine Reference</h2>
+                <div class="form-section">
+                    <h3>Mission Types</h3>
+                    <div class="reference-content" id="mission-reference">
+                        <!-- Mission type reference will be dynamically added here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Help Tab -->
+            <div class="tab-pane" id="help">
+                <h2>Help Guide</h2>
+                <div class="form-section">
+                    <h3>Getting Started</h3>
+                    <p>This application helps you plan military tactical operations by providing a drag-and-drop interface to place units on a military grid reference system (MGRS) map. The map is set to 1:25,000 scale with 1km grid cells for tactical planning.</p>
+                    
+                    <h3>Basic Steps:</h3>
+                    <ol>
+                        <li>Select a mission type from the dropdown menu</li>
+                        <li>Drag and drop symbols from the Unit Placement panel onto the map</li>
+                        <li>Use the Placed Units list to see and select units on the map</li>
+                        <li>Select a unit and press Delete key to remove it</li>
+                        <li>Use the measurement tools to calculate distances</li>
+                        <li>Export your completed plan as an image</li>
+                    </ol>
+                    
+                    <h3>Map Navigation:</h3>
+                    <ul>
+                        <li>Drag the map to pan</li>
+                        <li>Use the mouse wheel or zoom slider to zoom in/out</li>
+                        <li>Left-click a unit to select it</li>
+                        <li>Press F2 to create a point at the current map center</li>
+                        <li>Press Z to create a TRP (Target Reference Point) at the current map center</li>
+                        <li>Press F1 to copy the current MGRS coordinates</li>
+                    </ul>
+                    
+                    <h3>Unit Management:</h3>
+                    <ul>
+                        <li>The Placed Units section shows all units currently on the map</li>
+                        <li>Click on a unit in the list to select it on the map</li>
+                        <li>Press Delete key or click the × button to remove a unit</li>
+                        <li>All units maintain their aspect ratio when placed on the map</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+  <script src="js/mgrs.js"></script>
+  <script src="js/doctrine.js"></script>
+  <script src="js/app-core.js"></script>
+</body>
+</html>

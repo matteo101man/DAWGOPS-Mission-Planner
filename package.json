@@ -1,0 +1,28 @@
+{
+    "name": "tactical-mission-planner",
+    "version": "1.0.0",
+    "description": "A GUI application for military tactical mission planning",
+    "main": "server.js",
+    "scripts": {
+        "start": "node server.js",
+        "dev": "nodemon server.js"
+    },
+    "keywords": [
+        "military",
+        "tactical",
+        "planning",
+        "mission",
+        "army"
+    ],
+    "author": "",
+    "license": "MIT",
+    "dependencies": {
+        "express": "^4.18.2",
+        "fabric": "^5.3.1",
+        "mgrs": "^2.1.0",
+        "open": "^10.1.0"
+    },
+    "devDependencies": {
+        "nodemon": "^2.0.22"
+    }
+}

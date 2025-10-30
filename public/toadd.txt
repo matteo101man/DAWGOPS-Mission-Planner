@@ -1,0 +1,2 @@
+add fireteam symbol, simplify phase lines, add symbols for rifles and machine guns, add (axis of approaches) arrows to indicate movement
+add option to add text
