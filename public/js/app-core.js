@@ -399,17 +399,17 @@ document.addEventListener('DOMContentLoaded', function() {
         });
       });
 
-      // Touch devices: tap-to-select symbol, then tap on map to place
+      // Touch devices: tap symbol to create immediately at map center
       let pendingSymbolKey = null;
       const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
       if (isTouch) {
         unitItems.forEach(item => {
           item.addEventListener('click', function() {
-            // Clear previous selection styles
-            unitItems.forEach(i => i.style.outline = '');
-            pendingSymbolKey = this.getAttribute('data-symbol-key');
-            this.style.outline = '2px solid #3498db';
-            // Close sidebar to allow placing on map immediately
+            const key = this.getAttribute('data-symbol-key');
+            if (!key || !symbolImages[key]) return;
+            const center = map.getCenter();
+            createUnitFromSymbolAt(center, key);
+            // Close sidebar for placement/dragging
             try {
               const sidebar = document.getElementById('sidebar');
               const overlay = document.getElementById('sidebar-overlay');
@@ -419,14 +419,6 @@ document.addEventListener('DOMContentLoaded', function() {
               }
             } catch(_){}
           });
-        });
-
-        map.on('click', function(e) {
-          if (!pendingSymbolKey || !symbolImages[pendingSymbolKey]) return;
-          createUnitFromSymbolAt(e.latlng, pendingSymbolKey);
-          // Clear selection
-          unitItems.forEach(i => i.style.outline = '');
-          pendingSymbolKey = null;
         });
       }
 
@@ -482,7 +474,18 @@ document.addEventListener('DOMContentLoaded', function() {
         let currentRotation = 0;
         let wasRotating = false; // Track if we were just rotating
 
-        rotateBtn.addEventListener('mousedown', function(e) {
+        function clientPoint(ev) {
+            const t = ev.touches && ev.touches[0] ? ev.touches[0] : (ev.changedTouches && ev.changedTouches[0]) || ev;
+            return { x: t.clientX, y: t.clientY };
+        }
+
+        // Style controls for larger touch targets
+        [rotateBtn, lockBtn, resizeBtn].forEach(function(btn){
+          if (btn) { btn.style.fontSize = '18px'; btn.style.padding = '6px'; btn.style.margin = '2px'; }
+        });
+
+        // Pointer (mouse + touch) rotation
+        function startRotate(ev){
             e.stopPropagation();
             if (!isLocked) {
                 isRotating = true;
@@ -491,12 +494,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 const markerRect = markerElement.getBoundingClientRect();
                 const centerX = markerRect.left + markerRect.width/2 - rect.left;
                 const centerY = markerRect.top + markerRect.height/2 - rect.top;
-                startAngle = Math.atan2(e.clientY - rect.top - centerY, e.clientX - rect.left - centerX);
-                document.addEventListener('mousemove', handleRotation);
-                document.addEventListener('mouseup', stopRotation);
+                const p = clientPoint(ev);
+                startAngle = Math.atan2(p.y - rect.top - centerY, p.x - rect.left - centerX);
+                document.addEventListener('mousemove', handleRotation, {passive:false});
+                document.addEventListener('mouseup', stopRotation, {passive:false});
+                document.addEventListener('touchmove', handleRotation, {passive:false});
+                document.addEventListener('touchend', stopRotation, {passive:false});
                 document.body.style.cursor = 'grab';
             }
-        });
+        }
+        rotateBtn.addEventListener('mousedown', startRotate);
+        rotateBtn.addEventListener('touchstart', startRotate, {passive:false});
 
         function handleRotation(e) {
             if (!isRotating) return;
@@ -505,7 +513,8 @@ document.addEventListener('DOMContentLoaded', function() {
             const markerRect = markerElement.getBoundingClientRect();
             const centerX = markerRect.left + markerRect.width/2 - rect.left;
             const centerY = markerRect.top + markerRect.height/2 - rect.top;
-            const currentAngle = Math.atan2(e.clientY - rect.top - centerY, e.clientX - rect.left - centerX);
+            const p = clientPoint(e);
+            const currentAngle = Math.atan2(p.y - rect.top - centerY, p.x - rect.left - centerX);
             let angleDiff = (currentAngle - startAngle) * (180 / Math.PI);
             currentRotation = (rotation + angleDiff) % 360;
             container.style.transform = `rotate(${currentRotation}deg)`;
@@ -522,6 +531,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 document.removeEventListener('mousemove', handleRotation);
                 document.removeEventListener('mouseup', stopRotation);
+                document.removeEventListener('touchmove', handleRotation);
+                document.removeEventListener('touchend', stopRotation);
                 document.body.style.cursor = 'default';
             }
         }
@@ -546,21 +557,26 @@ document.addEventListener('DOMContentLoaded', function() {
         // Resize functionality
         let isResizing = false;
         let startSize = 40;
-        resizeBtn.addEventListener('mousedown', function(e) {
+        function startResize(e){
           e.stopPropagation();
           if (!isLocked) {
             isResizing = true;
             startSize = parseInt(img.style.width);
-            document.addEventListener('mousemove', handleResize);
-            document.addEventListener('mouseup', stopResize);
+            document.addEventListener('mousemove', handleResize, {passive:false});
+            document.addEventListener('mouseup', stopResize, {passive:false});
+            document.addEventListener('touchmove', handleResize, {passive:false});
+            document.addEventListener('touchend', stopResize, {passive:false});
           }
-        });
+        }
+        resizeBtn.addEventListener('mousedown', startResize);
+        resizeBtn.addEventListener('touchstart', startResize, {passive:false});
 
         function handleResize(e) {
           if (!isResizing) return;
           const rect = map.getContainer().getBoundingClientRect();
-          const x = e.clientX - rect.left;
-          const y = e.clientY - rect.top;
+          const p = clientPoint(e);
+          const x = p.x - rect.left;
+          const y = p.y - rect.top;
           const markerRect = markerElement.getBoundingClientRect();
           const markerX = markerRect.left - rect.left;
           const markerY = markerRect.top - rect.top;
@@ -577,10 +593,12 @@ document.addEventListener('DOMContentLoaded', function() {
           isResizing = false;
           document.removeEventListener('mousemove', handleResize);
           document.removeEventListener('mouseup', stopResize);
+          document.removeEventListener('touchmove', handleResize);
+          document.removeEventListener('touchend', stopResize);
         }
 
         // Lock functionality
-        lockBtn.addEventListener('click', function(e) {
+        function toggleLock(e){
           e.stopPropagation();
           isLocked = !isLocked;
           lockBtn.style.color = isLocked ? '#e74c3c' : '#666';
@@ -595,7 +613,9 @@ document.addEventListener('DOMContentLoaded', function() {
             unit.isLocked = isLocked;
             updateUnitHierarchy();
           }
-        });
+        }
+        lockBtn.addEventListener('click', toggleLock);
+        lockBtn.addEventListener('touchstart', toggleLock, {passive:false});
 
         // Click handler for selection
         container.addEventListener('click', function(e) {
@@ -664,7 +684,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Copy position button
         const copyPositionBtn = markerElement.querySelector('.unit-copy-position-btn');
-        copyPositionBtn.addEventListener('click', function(e) {
+        function doCopy(e){
             e.stopPropagation();
             const latlngNow = unitMarker.getLatLng();
             try {
@@ -685,7 +705,9 @@ document.addEventListener('DOMContentLoaded', function() {
             } catch (error) {
                 console.error('Error converting to MGRS:', error);
             }
-        });
+        }
+        copyPositionBtn.addEventListener('click', doCopy);
+        copyPositionBtn.addEventListener('touchstart', doCopy, {passive:false});
       }
 
       // Expose for external usage if needed
