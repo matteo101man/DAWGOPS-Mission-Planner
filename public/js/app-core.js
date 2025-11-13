@@ -500,11 +500,12 @@ document.addEventListener('DOMContentLoaded', function() {
             className: 'unit-marker',
             html: `
               <div class="unit-container">
-                <img src="symbols/${symbolImages[symbolKey].filename}" style="width: 40px; height: 40px; object-fit: contain;">
                 <div class="unit-label">${symbolImages[symbolKey].symbolName}</div>
-                <div class="unit-controls">
+                <img src="symbols/${symbolImages[symbolKey].filename}" style="width: 40px; height: 40px; object-fit: contain;">
+                <div class="unit-controls" style="display: none;">
                   <button class="unit-lock-btn">🔒</button>
                   <button class="unit-copy-position-btn">📋</button>
+                  <button class="unit-delete-btn">🗑️</button>
                 </div>
               </div>
             `,
@@ -530,10 +531,10 @@ document.addEventListener('DOMContentLoaded', function() {
         const boundingBox = L.rectangle(unitMarker.getLatLng().toBounds(0.001), {
           color: '#000000',
           fill: false,
-          weight: 4,
+          weight: 3,
           interactive: true,
           className: 'unit-bounding-box',
-          opacity: 0  // Hidden by default
+          opacity: 1  // Always visible
         }).addTo(map);
         boundingBox._unitMarker = unitMarker;
         boundingBox._unitContainer = container;
@@ -556,7 +557,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Style controls for iOS-friendly touch targets (minimum 44x44px per Apple HIG)
         const copyPositionBtn = markerElement.querySelector('.unit-copy-position-btn');
-        [lockBtn, copyPositionBtn].forEach(function(btn){
+        const deleteBtn = markerElement.querySelector('.unit-delete-btn');
+        const controlsDiv = markerElement.querySelector('.unit-controls');
+        
+        [lockBtn, copyPositionBtn, deleteBtn].forEach(function(btn){
           if (btn) { 
             btn.style.fontSize = '20px'; 
             btn.style.padding = '10px'; 
@@ -573,6 +577,16 @@ document.addEventListener('DOMContentLoaded', function() {
             btn.addEventListener('touchstart', function(){ this.style.background = 'rgba(240,240,240,0.95)'; this.style.transform = 'scale(0.95)'; }, {passive:true});
             btn.addEventListener('touchend', function(){ this.style.background = 'rgba(255,255,255,0.9)'; this.style.transform = 'scale(1)'; }, {passive:true});
           }
+        });
+        
+        // Toggle context menu on tap
+        let menuVisible = false;
+        container.addEventListener('click', function(e) {
+          // Don't toggle if clicking a button
+          if (e.target.tagName === 'BUTTON') return;
+          e.stopPropagation();
+          menuVisible = !menuVisible;
+          controlsDiv.style.display = menuVisible ? 'flex' : 'none';
         });
 
         // Two-finger gesture helper
@@ -688,64 +702,19 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         lockBtn.addEventListener('click', toggleLock);
         lockBtn.addEventListener('touchstart', toggleLock, {passive:false});
-
-        // Click handler for selection (with bounding box visibility) and context menu toggle
-        container.addEventListener('click', function(e) {
+        
+        // Delete button functionality
+        function deleteUnit(e) {
           e.stopPropagation();
-          
-          // Check if context menu is currently open for this unit
-          const isContextMenuOpen = contextMenu.style.display === 'block' && contextMenu.dataset.unitMarker === unitMarker;
-          
-          if (isContextMenuOpen) {
-            // If context menu is open for this unit, close it
-            contextMenu.style.display = 'none';
-            return;
+          e.preventDefault();
+          const index = placedUnits.findIndex(u => u.marker === unitMarker);
+          if (index !== -1) {
+            removeUnit(index);
           }
-          
-          // Close context menu if it's open for any unit
-          contextMenu.style.display = 'none';
-          
-          if (e.ctrlKey) {
-            if (selectedUnit === unitMarker) {
-              selectedUnit.getElement().classList.remove('selected');
-              boundingBox.setStyle({opacity: 0}); // Hide bounding box
-              selectedUnit = null;
-              selectedUnits = selectedUnits.filter(u => u !== unitMarker);
-            } else {
-              if (!selectedUnits.includes(unitMarker)) {
-                selectedUnits.push(unitMarker);
-                unitMarker.getElement().classList.add('selected');
-                boundingBox.setStyle({opacity: 1}); // Show bounding box
-              }
-            }
-          } else {
-            if (selectedUnit === unitMarker) {
-              // Unit is already selected, toggle context menu
-              contextMenu.dataset.unitMarker = unitMarker;
-              contextMenu.dataset.unit = unitMarker;
-              
-              const rect = container.getBoundingClientRect();
-              contextMenu.style.display = 'block';
-              contextMenu.style.left = (rect.left + rect.width / 2) + 'px';
-              contextMenu.style.top = (rect.bottom + 5) + 'px';
-            } else {
-              if (selectedUnit) {
-                selectedUnit.getElement().classList.remove('selected');
-                // Hide previous unit's bounding box
-                const prevUnit = placedUnits.find(u => u.marker === selectedUnit);
-                if (prevUnit && prevUnit.boundingBox) {
-                  prevUnit.boundingBox.setStyle({opacity: 0});
-                }
-              }
-              unitMarker.getElement().classList.add('selected');
-              boundingBox.setStyle({opacity: 1}); // Show bounding box
-              selectedUnit = unitMarker;
-              selectedUnits = [unitMarker];
-            }
-          }
-          measureDistanceBtn.style.display = selectedUnits.length === 2 ? 'block' : 'none';
-          updateUnitHierarchy();
-        });
+        }
+        deleteBtn.addEventListener('click', deleteUnit);
+        deleteBtn.addEventListener('touchstart', deleteUnit, {passive:false});
+
 
         // Double-tap to rename (iOS compatible)
         let lastTap = 0;
@@ -2940,39 +2909,15 @@ document.addEventListener('DOMContentLoaded', function() {
         contextMenu.className = 'context-menu';
         contextMenu.style.display = 'none';
         contextMenu.innerHTML = `
-            <div class="context-menu-item" data-action="lock">🔒 Lock/Unlock</div>
-            <div class="context-menu-item" data-action="copy-position">📋 Copy Position</div>
-            <div class="context-menu-item" data-action="delete">🗑️ Delete</div>
+            <div class="context-menu-item" data-action="copy-position">Copy Position</div>
+            <div class="context-menu-item" data-action="delete">Delete</div>
         `;
         document.body.appendChild(contextMenu);
 
         // Handle context menu clicks
         contextMenu.addEventListener('click', function(e) {
             const action = e.target.getAttribute('data-action');
-            if (action === 'lock') {
-                const unit = contextMenu.dataset.unit;
-                if (unit) {
-                    const unitData = placedUnits.find(u => u.marker === unit);
-                    if (unitData) {
-                        unitData.isLocked = !unitData.isLocked;
-                        const markerElement = unit.getElement();
-                        const container = markerElement.querySelector('.unit-container');
-                        const lockBtn = markerElement.querySelector('.unit-lock-btn');
-                        if (lockBtn) {
-                            lockBtn.style.color = unitData.isLocked ? '#e74c3c' : '#666';
-                        }
-                        if (container) {
-                            container.style.opacity = unitData.isLocked ? '0.7' : '1';
-                        }
-                        if (unitData.isLocked) {
-                            unit.dragging.disable();
-                        } else {
-                            unit.dragging.enable();
-                        }
-                        updateUnitHierarchy();
-                    }
-                }
-            } else if (action === 'copy-position') {
+            if (action === 'copy-position') {
                 const unit = contextMenu.dataset.unit;
                 if (unit) {
                     const latlng = unit.getLatLng();
@@ -3029,22 +2974,12 @@ document.addEventListener('DOMContentLoaded', function() {
             e.preventDefault();
             e.stopPropagation();
             
-            try {
-                const markerElement = this.closest('.unit-marker');
-                if (markerElement && markerElement._leaflet_id) {
-                    const unit = markerElement._leaflet_pos ? map._layers[markerElement._leaflet_id] : null;
-                    if (unit) {
-                        contextMenu.dataset.unit = unit;
-                        contextMenu.dataset.unitMarker = unit;
-                        
-                        contextMenu.style.display = 'block';
-                        contextMenu.style.left = e.pageX + 'px';
-                        contextMenu.style.top = e.pageY + 'px';
-                    }
-                }
-            } catch (error) {
-                console.error('Error showing context menu:', error);
-            }
+            const unit = this.closest('.unit-marker')._leaflet_map._leaflet_map;
+            contextMenu.dataset.unit = unit;
+            
+            contextMenu.style.display = 'block';
+            contextMenu.style.left = e.pageX + 'px';
+            contextMenu.style.top = e.pageY + 'px';
         });
     }
 
