@@ -401,41 +401,81 @@ document.addEventListener('DOMContentLoaded', function() {
         });
       });
 
-      // Touch devices: tap symbol to create immediately at map center
+      // Touch devices: long-press symbol to create at map center (allows scrolling)
       let pendingSymbolKey = null;
       const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
       if (isTouch) {
         unitItems.forEach(item => {
-          // Use touchstart for immediate feedback on iOS
+          let longPressTimer = null;
+          let touchStarted = false;
+          let longPressed = false;
+          
           item.addEventListener('touchstart', function(e) {
-            e.preventDefault(); // Prevent scroll/drag
+            touchStarted = true;
+            longPressed = false;
             this.style.background = '#e8e8e8';
             this.style.transform = 'scale(0.95)';
-          }, {passive: false});
+            
+            // Start long-press timer (500ms)
+            longPressTimer = setTimeout(() => {
+              if (touchStarted) {
+                longPressed = true;
+                this.style.background = '#4CAF50';
+                this.style.transform = 'scale(1.05)';
+                // Vibrate if available
+                if (navigator.vibrate) navigator.vibrate(50);
+                
+                const key = this.getAttribute('data-symbol-key');
+                if (!key || !symbolImages[key]) return;
+                const center = map.getCenter();
+                createUnitFromSymbolAt(center, key);
+                // Close sidebar for placement/dragging
+                try {
+                  const sidebar = document.getElementById('sidebar');
+                  const overlay = document.getElementById('sidebar-overlay');
+                  if (sidebar && sidebar.classList.contains('open')) {
+                    sidebar.classList.remove('open');
+                    if (overlay) {
+                      overlay.style.display = 'none';
+                      overlay.classList.remove('active');
+                    }
+                  }
+                } catch(_){}
+              }
+            }, 500);
+          }, {passive: true});
+          
+          item.addEventListener('touchmove', function(e) {
+            // Cancel long-press if finger moves (scrolling)
+            touchStarted = false;
+            clearTimeout(longPressTimer);
+            if (!longPressed) {
+              this.style.background = '#fafafa';
+              this.style.transform = 'scale(1)';
+            }
+          }, {passive: true});
           
           item.addEventListener('touchend', function(e) {
-            e.preventDefault();
+            touchStarted = false;
+            clearTimeout(longPressTimer);
             this.style.background = '#fafafa';
             this.style.transform = 'scale(1)';
-            
-            const key = this.getAttribute('data-symbol-key');
-            if (!key || !symbolImages[key]) return;
-            const center = map.getCenter();
-            createUnitFromSymbolAt(center, key);
-            // Close sidebar for placement/dragging
-            try {
-              const sidebar = document.getElementById('sidebar');
-              const overlay = document.getElementById('sidebar-overlay');
-              if (sidebar && sidebar.classList.contains('open')) {
-                sidebar.classList.remove('open');
-                if (overlay) overlay.style.display = 'none';
-              }
-            } catch(_){}
-          }, {passive: false});
+          }, {passive: true});
           
-          // Fallback for click (desktop)
+          item.addEventListener('touchcancel', function(e) {
+            touchStarted = false;
+            clearTimeout(longPressTimer);
+            this.style.background = '#fafafa';
+            this.style.transform = 'scale(1)';
+          }, {passive: true});
+        });
+      }
+      
+      // Desktop: click to create immediately
+      const isDesktop = !isTouch;
+      if (isDesktop) {
+        unitItems.forEach(item => {
           item.addEventListener('click', function(e) {
-            if (isTouch) return; // Skip on touch devices
             const key = this.getAttribute('data-symbol-key');
             if (!key || !symbolImages[key]) return;
             const center = map.getCenter();
@@ -463,9 +503,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <img src="symbols/${symbolImages[symbolKey].filename}" style="width: 40px; height: 40px; object-fit: contain;">
                 <div class="unit-label">${symbolImages[symbolKey].symbolName}</div>
                 <div class="unit-controls">
-                  <button class="unit-rotate-btn">⟳</button>
                   <button class="unit-lock-btn">🔒</button>
-                  <button class="unit-resize-btn">⤡</button>
                   <button class="unit-copy-position-btn">📋</button>
                 </div>
               </div>
@@ -481,22 +519,21 @@ document.addEventListener('DOMContentLoaded', function() {
         // Add rotation and lock functionality
         const markerElement = unitMarker.getElement();
         const container = markerElement.querySelector('.unit-container');
-        const rotateBtn = markerElement.querySelector('.unit-rotate-btn');
         const lockBtn = markerElement.querySelector('.unit-lock-btn');
-        const resizeBtn = markerElement.querySelector('.unit-resize-btn');
         const img = markerElement.querySelector('img');
         const label = markerElement.querySelector('.unit-label');
         let rotation = 0;
         let isLocked = false;
         let customName = null;
 
-        // Create invisible bounding box for pinch-to-resize
+        // Create bounding box for selection indication and pinch-to-resize
         const boundingBox = L.rectangle(unitMarker.getLatLng().toBounds(0.001), {
-          color: 'transparent',
+          color: '#3498db',
           fill: false,
-          weight: 0,
+          weight: 2,
           interactive: true,
-          className: 'unit-bounding-box'
+          className: 'unit-bounding-box',
+          opacity: 0  // Hidden by default
         }).addTo(map);
         boundingBox._unitMarker = unitMarker;
         boundingBox._unitContainer = container;
@@ -519,7 +556,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Style controls for iOS-friendly touch targets (minimum 44x44px per Apple HIG)
         const copyPositionBtn = markerElement.querySelector('.unit-copy-position-btn');
-        [rotateBtn, lockBtn, resizeBtn, copyPositionBtn].forEach(function(btn){
+        [lockBtn, copyPositionBtn].forEach(function(btn){
           if (btn) { 
             btn.style.fontSize = '20px'; 
             btn.style.padding = '10px'; 
@@ -538,78 +575,7 @@ document.addEventListener('DOMContentLoaded', function() {
           }
         });
 
-        // Pointer (mouse + touch) rotation
-        function startRotate(ev){
-            ev.stopPropagation();
-            ev.preventDefault();
-            if (!isLocked) {
-                isRotating = true;
-                wasRotating = false; // Reset the flag
-                const rect = map.getContainer().getBoundingClientRect();
-                const markerRect = markerElement.getBoundingClientRect();
-                const centerX = markerRect.left + markerRect.width/2 - rect.left;
-                const centerY = markerRect.top + markerRect.height/2 - rect.top;
-                const p = clientPoint(ev);
-                startAngle = Math.atan2(p.y - rect.top - centerY, p.x - rect.left - centerX);
-                document.addEventListener('mousemove', handleRotation, {passive:false});
-                document.addEventListener('mouseup', stopRotation, {passive:false});
-                document.addEventListener('touchmove', handleRotation, {passive:false});
-                document.addEventListener('touchend', stopRotation, {passive:false});
-                document.body.style.cursor = 'grab';
-            }
-        }
-        rotateBtn.addEventListener('mousedown', startRotate);
-        rotateBtn.addEventListener('touchstart', startRotate, {passive:false});
-
-        function handleRotation(e) {
-            if (!isRotating) return;
-            wasRotating = true;
-            const rect = map.getContainer().getBoundingClientRect();
-            const markerRect = markerElement.getBoundingClientRect();
-            const centerX = markerRect.left + markerRect.width/2 - rect.left;
-            const centerY = markerRect.top + markerRect.height/2 - rect.top;
-            const p = clientPoint(e);
-            const currentAngle = Math.atan2(p.y - rect.top - centerY, p.x - rect.left - centerX);
-            let angleDiff = (currentAngle - startAngle) * (180 / Math.PI);
-            currentRotation = (rotation + angleDiff) % 360;
-            container.style.transform = `rotate(${currentRotation}deg)`;
-        }
-
-        function stopRotation() {
-            if (isRotating) {
-                isRotating = false;
-                rotation = currentRotation;
-                const unit = placedUnits.find(u => u.marker === unitMarker);
-                if (unit) {
-                    unit.rotation = rotation;
-                    updateUnitHierarchy();
-                }
-                document.removeEventListener('mousemove', handleRotation);
-                document.removeEventListener('mouseup', stopRotation);
-                document.removeEventListener('touchmove', handleRotation);
-                document.removeEventListener('touchend', stopRotation);
-                document.body.style.cursor = 'default';
-            }
-        }
-
-        rotateBtn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            if (!isLocked && !isRotating && !wasRotating) {
-                rotation = (rotation + 45) % 360;
-                container.style.transform = `rotate(${rotation}deg)`;
-                const unit = placedUnits.find(u => u.marker === unitMarker);
-                if (unit) {
-                    unit.rotation = rotation;
-                    updateUnitHierarchy();
-                }
-            }
-            wasRotating = false;
-        });
-
-        window.addEventListener('blur', stopRotation);
-        document.addEventListener('mouseleave', stopRotation);
-
-        // Pinch-to-resize gesture on bounding box
+        // Two-finger gesture helper
         function getDistance(touch1, touch2) {
           const dx = touch1.clientX - touch2.clientX;
           const dy = touch1.clientY - touch2.clientY;
@@ -701,38 +667,6 @@ document.addEventListener('DOMContentLoaded', function() {
           boundingBox.setBounds(latlng.toBounds(sizeInDegrees));
         });
 
-        // Keep resize button for desktop/fallback
-        resizeBtn.addEventListener('mousedown', function(e){
-          e.stopPropagation();
-          e.preventDefault();
-          if (!isLocked) {
-            isResizing = true;
-            initialSize = parseInt(img.style.width) || 40;
-            const rect = map.getContainer().getBoundingClientRect();
-            const startX = e.clientX - rect.left;
-            const startY = e.clientY - rect.top;
-            document.addEventListener('mousemove', function handleMouseResize(e) {
-              if (!isResizing) return;
-              const x = e.clientX - rect.left;
-              const y = e.clientY - rect.top;
-              const dx = x - startX;
-              const dy = y - startY;
-              const newSize = Math.max(20, Math.min(300, initialSize + Math.max(Math.abs(dx), Math.abs(dy))));
-              img.style.width = `${newSize}px`;
-              img.style.height = `${newSize}px`;
-              container.style.width = `${newSize + 20}px`;
-              container.style.height = `${newSize + 40}px`;
-              const latlng = unitMarker.getLatLng();
-              const sizeInDegrees = (newSize / 111000) * 0.001;
-              boundingBox.setBounds(latlng.toBounds(sizeInDegrees));
-            }, {passive:false});
-            document.addEventListener('mouseup', function stopMouseResize() {
-              isResizing = false;
-              document.removeEventListener('mousemove', arguments.callee);
-              document.removeEventListener('mouseup', arguments.callee);
-            }, {once: true});
-          }
-        });
 
         // Lock functionality
         function toggleLock(e){
@@ -755,30 +689,39 @@ document.addEventListener('DOMContentLoaded', function() {
         lockBtn.addEventListener('click', toggleLock);
         lockBtn.addEventListener('touchstart', toggleLock, {passive:false});
 
-        // Click handler for selection
+        // Click handler for selection (with bounding box visibility)
         container.addEventListener('click', function(e) {
           e.stopPropagation();
           if (e.ctrlKey) {
             if (selectedUnit === unitMarker) {
               selectedUnit.getElement().classList.remove('selected');
+              boundingBox.setStyle({opacity: 0}); // Hide bounding box
               selectedUnit = null;
               selectedUnits = selectedUnits.filter(u => u !== unitMarker);
             } else {
               if (!selectedUnits.includes(unitMarker)) {
                 selectedUnits.push(unitMarker);
                 unitMarker.getElement().classList.add('selected');
+                boundingBox.setStyle({opacity: 1}); // Show bounding box
               }
             }
           } else {
             if (selectedUnit === unitMarker) {
               selectedUnit.getElement().classList.remove('selected');
+              boundingBox.setStyle({opacity: 0}); // Hide bounding box
               selectedUnit = null;
               selectedUnits = [];
             } else {
               if (selectedUnit) {
                 selectedUnit.getElement().classList.remove('selected');
+                // Hide previous unit's bounding box
+                const prevUnit = placedUnits.find(u => u.marker === selectedUnit);
+                if (prevUnit && prevUnit.boundingBox) {
+                  prevUnit.boundingBox.setStyle({opacity: 0});
+                }
               }
               unitMarker.getElement().classList.add('selected');
+              boundingBox.setStyle({opacity: 1}); // Show bounding box
               selectedUnit = unitMarker;
               selectedUnits = [unitMarker];
             }
@@ -787,7 +730,29 @@ document.addEventListener('DOMContentLoaded', function() {
           updateUnitHierarchy();
         });
 
-        // Double-click to rename
+        // Double-tap to rename (iOS compatible)
+        let lastTap = 0;
+        container.addEventListener('touchend', function(e) {
+          const currentTime = new Date().getTime();
+          const tapLength = currentTime - lastTap;
+          if (tapLength < 500 && tapLength > 0 && !isLocked) {
+            e.preventDefault();
+            const currentName = customName || symbolImages[symbolKey].symbolName;
+            const newName = prompt('Enter new name:', currentName);
+            if (newName !== null && newName.trim() !== '') {
+              customName = newName.trim();
+              label.textContent = customName;
+              const unit = placedUnits.find(u => u.marker === unitMarker);
+              if (unit) {
+                unit.customName = customName;
+                updateUnitHierarchy();
+              }
+            }
+          }
+          lastTap = currentTime;
+        });
+        
+        // Double-click to rename (desktop)
         container.addEventListener('dblclick', function(e) {
           e.stopPropagation();
           if (!isLocked) {
@@ -822,7 +787,8 @@ document.addEventListener('DOMContentLoaded', function() {
         saveState();
         addContextMenuListeners(container);
 
-        // Copy position button
+        // Copy position button (text marker follows parent unit)
+        let linkedTextMarker = null;
         function doCopy(e){
             e.stopPropagation();
             e.preventDefault();
@@ -839,13 +805,35 @@ document.addEventListener('DOMContentLoaded', function() {
                             iconAnchor: [100, 15]
                         })
                     }).addTo(map);
-                    placedUnits.push({ marker: textMarker, type: 'text', customName: `Position: ${formattedMgrs}` });
+                    linkedTextMarker = textMarker;
+                    placedUnits.push({ marker: textMarker, type: 'text', customName: `Position: ${formattedMgrs}`, parentUnit: unitMarker });
                     updateUnitHierarchy();
                 }
             } catch (error) {
                 console.error('Error converting to MGRS:', error);
             }
         }
+        // Update text marker position when parent unit is dragged
+        unitMarker.on('drag', function() {
+          if (linkedTextMarker) {
+            const latlng = unitMarker.getLatLng();
+            linkedTextMarker.setLatLng(latlng);
+            // Update text content with new coordinates
+            try {
+              if (window.mgrs) {
+                const mgrsRef = window.mgrs.forward([latlng.lng, latlng.lat]);
+                const formattedMgrs = formatMgrs(mgrsRef);
+                const markerElement = linkedTextMarker.getElement();
+                if (markerElement) {
+                  const textDiv = markerElement.querySelector('div');
+                  if (textDiv) textDiv.textContent = formattedMgrs;
+                }
+                const unit = placedUnits.find(u => u.marker === linkedTextMarker);
+                if (unit) unit.customName = `Position: ${formattedMgrs}`;
+              }
+            } catch(e) {}
+          }
+        });
         copyPositionBtn.addEventListener('click', doCopy);
         copyPositionBtn.addEventListener('touchstart', doCopy, {passive:false});
       }
