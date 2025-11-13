@@ -3121,9 +3121,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     units: state.placedUnits,
                     lastUpdate: lastSyncTime,
                     userId: window.userId || 'unknown'
+                }).then(() => {
+                    console.log('✅ Firebase sync successful');
+                }).catch((error) => {
+                    console.error('❌ Firebase sync error:', error);
+                    console.error('Error code:', error.code);
+                    console.error('Error message:', error.message);
                 });
             } catch (e) {
-                console.log('Firebase sync failed, continuing in offline mode');
+                console.error('❌ Firebase sync failed:', e);
             }
         }
     }
@@ -3506,9 +3512,11 @@ document.addEventListener('DOMContentLoaded', function() {
                             name: myDeviceName,
                             color: myUserColor,
                             lastUpdate: Date.now()
+                        }).catch((error) => {
+                            console.error('❌ Location sync error:', error.code, error.message);
                         });
                     } catch (e) {
-                        console.log('Firebase not configured, running in offline mode');
+                        console.error('❌ Firebase location sync failed:', e);
                     }
                 }
                 
