@@ -526,25 +526,96 @@ document.addEventListener('DOMContentLoaded', function() {
         let rotation = 0;
         let isLocked = false;
         let customName = null;
+        let linkedTextMarker = null; // For position copy feature
 
         // Create bounding box for selection indication and pinch-to-resize
-        // Make it square and bigger than the unit (80x80 instead of 40x40)
-        const boxSize = 0.0008; // Larger bounding box in degrees
+        // Make it MUCH larger for easier touch interaction (3x the unit size minimum)
+        const boxSize = 0.0012; // Even larger bounding box for touch-friendly interaction
         const boundingBox = L.rectangle(unitMarker.getLatLng().toBounds(boxSize), {
           color: '#000000',
           fillColor: '#000000',
           fill: true,
-          fillOpacity: 0.05,
-          weight: 4,
+          fillOpacity: 0.08,
+          weight: 5,
           interactive: true,
           className: 'unit-bounding-box',
           opacity: 1,  // Always visible
-          pane: 'overlayPane' // Ensure it renders above the map
+          pane: 'overlayPane', // Ensure it renders above the map
+          bubblingMouseEvents: false // Prevent events from going to map
         }).addTo(map);
         boundingBox._unitMarker = unitMarker;
         boundingBox._unitContainer = container;
         boundingBox._unitImg = img;
         boundingBox._boxSize = boxSize;
+        
+        // Make the bounding box the primary drag target (not the marker)
+        boundingBox.dragging = unitMarker.dragging;
+        
+        // Make bounding box draggable by syncing with unit marker
+        let isDraggingBox = false;
+        let dragStartLatLng = null;
+        let boxElement = boundingBox.getElement();
+        
+        // Single-finger drag on bounding box
+        if (boxElement) {
+          boxElement.addEventListener('touchstart', function(e) {
+            if (isLocked || e.touches.length > 1) return;
+            isDraggingBox = true;
+            dragStartLatLng = unitMarker.getLatLng();
+            e.stopPropagation();
+            // Disable map dragging while dragging unit
+            map.dragging.disable();
+          }, {passive: false});
+          
+          boxElement.addEventListener('touchmove', function(e) {
+            if (!isDraggingBox || e.touches.length > 1) return;
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const touch = e.touches[0];
+            const point = map.containerPointToLatLng([touch.clientX, touch.clientY]);
+            unitMarker.setLatLng(point);
+            boundingBox.setBounds(point.toBounds(boundingBox._boxSize));
+            
+            // Update linked text marker if exists
+            if (linkedTextMarker) {
+              const offsetLat = point.lat + 0.0002;
+              linkedTextMarker.setLatLng([offsetLat, point.lng]);
+              try {
+                if (window.mgrs) {
+                  const mgrsRef = window.mgrs.forward([point.lng, point.lat]);
+                  const formattedMgrs = formatMgrs(mgrsRef);
+                  const markerElement = linkedTextMarker.getElement();
+                  if (markerElement) {
+                    const textDiv = markerElement.querySelector('div');
+                    if (textDiv) textDiv.textContent = formattedMgrs;
+                  }
+                  const unit = placedUnits.find(u => u.marker === linkedTextMarker);
+                  if (unit) unit.customName = `Position: ${formattedMgrs}`;
+                }
+              } catch(e) {}
+            }
+          }, {passive: false});
+          
+          boxElement.addEventListener('touchend', function(e) {
+            if (isDraggingBox) {
+              isDraggingBox = false;
+              const unit = placedUnits.find(u => u.marker === unitMarker);
+              if (unit) {
+                unit.position = [unitMarker.getLatLng().lat, unitMarker.getLatLng().lng];
+                updateUnitHierarchy();
+                saveState();
+              }
+              // Re-enable map dragging
+              map.dragging.enable();
+            }
+          }, {passive: false});
+        }
+        
+        // Prevent map interaction when touching bounding box
+        boundingBox.on('mousedown touchstart', function(e) {
+          L.DomEvent.stopPropagation(e);
+        });
 
         // Two-finger rotation and pinch-to-resize state
         let isRotating = false;
@@ -608,74 +679,85 @@ document.addEventListener('DOMContentLoaded', function() {
         let touch1Id = null;
         let touch2Id = null;
 
-        // Detect two-finger gestures on the unit marker
-        markerElement.addEventListener('touchstart', function(e) {
-          if (isLocked) return;
-          if (e.touches.length === 2) {
+        // Detect two-finger gestures on BOTH the unit marker AND bounding box for better touch detection
+        const gestureElements = [markerElement, boundingBox.getElement()];
+        gestureElements.forEach(element => {
+          if (!element) return;
+          element.addEventListener('touchstart', function(e) {
+            if (isLocked) return;
+            if (e.touches.length === 2) {
+              e.preventDefault();
+              e.stopPropagation();
+              twoFingerActive = true;
+              touch1Id = e.touches[0].identifier;
+              touch2Id = e.touches[1].identifier;
+              
+              // Calculate initial angle for rotation
+              const dx = e.touches[1].clientX - e.touches[0].clientX;
+              const dy = e.touches[1].clientY - e.touches[0].clientY;
+              startAngle = Math.atan2(dy, dx);
+              
+              // Calculate initial distance for pinch-to-zoom
+              initialDistance = Math.sqrt(dx * dx + dy * dy);
+              initialSize = parseInt(img.style.width) || 40;
+            }
+          }, {passive: false});
+        });
+
+        gestureElements.forEach(element => {
+          if (!element) return;
+          element.addEventListener('touchmove', function(e) {
+            if (!twoFingerActive || e.touches.length !== 2) return;
+            
+            const touch1 = Array.from(e.touches).find(t => t.identifier === touch1Id);
+            const touch2 = Array.from(e.touches).find(t => t.identifier === touch2Id);
+            
+            if (!touch1 || !touch2) return;
+            
             e.preventDefault();
             e.stopPropagation();
-            twoFingerActive = true;
-            touch1Id = e.touches[0].identifier;
-            touch2Id = e.touches[1].identifier;
             
-            // Calculate initial angle for rotation
-            const dx = e.touches[1].clientX - e.touches[0].clientX;
-            const dy = e.touches[1].clientY - e.touches[0].clientY;
-            startAngle = Math.atan2(dy, dx);
+            // Calculate current angle and rotation
+            const dx = touch2.clientX - touch1.clientX;
+            const dy = touch2.clientY - touch1.clientY;
+            const currentAngle = Math.atan2(dy, dx);
+            const angleDiff = (currentAngle - startAngle) * (180 / Math.PI);
+            currentRotation = (rotation + angleDiff) % 360;
+            container.style.transform = `rotate(${currentRotation}deg)`;
             
-            // Calculate initial distance for pinch-to-zoom
-            initialDistance = Math.sqrt(dx * dx + dy * dy);
-            initialSize = parseInt(img.style.width) || 40;
-          }
-        }, {passive: false});
+            // Calculate current distance and scale for pinch
+            const currentDistance = Math.sqrt(dx * dx + dy * dy);
+            const scale = currentDistance / initialDistance;
+            const newSize = Math.max(20, Math.min(300, initialSize * scale));
+            img.style.width = `${newSize}px`;
+            img.style.height = `${newSize}px`;
+            container.style.width = `${newSize + 20}px`;
+            container.style.height = `${newSize + 40}px`;
+            
+            // Update bounding box to stay square and larger
+            const latlng = unitMarker.getLatLng();
+            boundingBox.setBounds(latlng.toBounds(boundingBox._boxSize));
+          }, {passive: false});
+        });
 
-        markerElement.addEventListener('touchmove', function(e) {
-          if (!twoFingerActive || e.touches.length !== 2) return;
-          
-          const touch1 = Array.from(e.touches).find(t => t.identifier === touch1Id);
-          const touch2 = Array.from(e.touches).find(t => t.identifier === touch2Id);
-          
-          if (!touch1 || !touch2) return;
-          
-          e.preventDefault();
-          e.stopPropagation();
-          
-          // Calculate current angle and rotation
-          const dx = touch2.clientX - touch1.clientX;
-          const dy = touch2.clientY - touch1.clientY;
-          const currentAngle = Math.atan2(dy, dx);
-          const angleDiff = (currentAngle - startAngle) * (180 / Math.PI);
-          currentRotation = (rotation + angleDiff) % 360;
-          container.style.transform = `rotate(${currentRotation}deg)`;
-          
-          // Calculate current distance and scale for pinch
-          const currentDistance = Math.sqrt(dx * dx + dy * dy);
-          const scale = currentDistance / initialDistance;
-          const newSize = Math.max(20, Math.min(300, initialSize * scale));
-          img.style.width = `${newSize}px`;
-          img.style.height = `${newSize}px`;
-          container.style.width = `${newSize + 20}px`;
-          container.style.height = `${newSize + 40}px`;
-          
-          // Update bounding box to stay square and larger
-          const latlng = unitMarker.getLatLng();
-          boundingBox.setBounds(latlng.toBounds(boundingBox._boxSize));
-        }, {passive: false});
-
-        markerElement.addEventListener('touchend', function(e) {
-          if (twoFingerActive && e.touches.length < 2) {
-            twoFingerActive = false;
-            rotation = currentRotation;
-            const unit = placedUnits.find(u => u.marker === unitMarker);
-            if (unit) {
-              unit.rotation = rotation;
-              unit.size = parseInt(img.style.width);
-              updateUnitHierarchy();
+        gestureElements.forEach(element => {
+          if (!element) return;
+          element.addEventListener('touchend', function(e) {
+            if (twoFingerActive && e.touches.length < 2) {
+              twoFingerActive = false;
+              rotation = currentRotation;
+              const unit = placedUnits.find(u => u.marker === unitMarker);
+              if (unit) {
+                unit.rotation = rotation;
+                unit.size = parseInt(img.style.width);
+                updateUnitHierarchy();
+                saveState(); // Save after gesture
+              }
+              touch1Id = null;
+              touch2Id = null;
             }
-            touch1Id = null;
-            touch2Id = null;
-          }
-        }, {passive: false});
+          }, {passive: false});
+        });
 
 
         // Update bounding box when unit moves
@@ -804,7 +886,6 @@ document.addEventListener('DOMContentLoaded', function() {
         addContextMenuListeners(container);
 
         // Copy position button (text marker follows parent unit and appears above label)
-        let linkedTextMarker = null;
         function doCopy(e){
             e.stopPropagation();
             e.preventDefault();
@@ -3004,7 +3085,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Add context menu listeners to existing unit containers
     document.querySelectorAll('.unit-container').forEach(addContextMenuListeners);
 
-    // State persistence functions
+    // State persistence functions with Firebase sync
     function saveState() {
         const state = {
             mapView: {
@@ -3021,11 +3102,24 @@ document.addEventListener('DOMContentLoaded', function() {
                 type: unit.type || 'symbol', // 'symbol', 'point', 'text', 'distance'
                 // For distance measurements
                 distance: unit.distance,
-                azimuth: unit.azimuth
+                azimuth: unit.azimuth,
+                parentUnit: unit.parentUnit ? placedUnits.findIndex(u => u.marker === unit.parentUnit) : null
             })),
             selectedUnits: selectedUnits.map((unit, index) => index) // Save indices instead of IDs
         };
         localStorage.setItem('tacticalMapState', JSON.stringify(state));
+        
+        // Sync to Firebase if available
+        if (typeof firebase !== 'undefined' && window.database) {
+            try {
+                window.database.ref('mission/units').set({
+                    units: state.placedUnits,
+                    lastUpdate: Date.now()
+                });
+            } catch (e) {
+                console.log('Firebase sync failed, continuing in offline mode');
+            }
+        }
     }
 
     function loadState() {
@@ -3135,6 +3229,36 @@ document.addEventListener('DOMContentLoaded', function() {
     setInterval(saveState, 5000); // Save every 5 seconds
     map.on('moveend', saveState);
     map.on('zoomend', saveState);
+    
+    // Listen for unit updates from Firebase (from other users)
+    if (typeof firebase !== 'undefined' && window.database) {
+        try {
+            let isFirstLoad = true;
+            window.database.ref('mission/units').on('value', (snapshot) => {
+                const data = snapshot.val();
+                if (!data || !data.units) return;
+                
+                // Skip first load (we already have local state)
+                if (isFirstLoad) {
+                    isFirstLoad = false;
+                    return;
+                }
+                
+                // Check if this is an update from another user (not our own update)
+                const now = Date.now();
+                if (Math.abs(now - data.lastUpdate) < 1000) {
+                    // Recent update, might be from us, skip to avoid loops
+                    return;
+                }
+                
+                console.log('📦 Received unit update from another user');
+                // TODO: Smart merge - for now, just notify
+                // Full sync would require conflict resolution
+            });
+        } catch (e) {
+            console.log('Firebase listener setup failed');
+        }
+    }
 
     // Function to add selection and interaction handlers to markers
     function addMarkerInteractivity(marker, unit) {

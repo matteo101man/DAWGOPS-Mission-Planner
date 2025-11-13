@@ -43,6 +43,12 @@
         flex-wrap: wrap;
         justify-content: center;
       }
+      /* Unit bounding box for touch-friendly interaction */
+      .unit-bounding-box {
+        cursor: move;
+        touch-action: none; /* Prevent default touch behaviors */
+        pointer-events: auto !important; /* Ensure it captures touches */
+      }
       /* Live location marker with pulsing animation */
       .live-location-marker .pulse-ring {
         position: absolute;
