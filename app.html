@@ -81,6 +81,24 @@
       }
       .hierarchy-item:active { background: rgba(0,0,0,0.05); }
       .hierarchy-item.selected { background: rgba(52, 152, 219, 0.2); border-color: rgba(52, 152, 219, 0.4); }
+      .hierarchy-icon { 
+        width: 24px; 
+        height: 24px; 
+        object-fit: contain; 
+        display: inline-block; 
+        vertical-align: middle; 
+        margin-right: 8px;
+      }
+      .hierarchy-unit { 
+        display: flex; 
+        align-items: center; 
+        justify-content: space-between;
+      }
+      .hierarchy-name { 
+        flex: 1; 
+        font-size: 13px; 
+        vertical-align: middle;
+      }
       .controls button { 
         margin: 4px 0; 
         width: 100%; 
@@ -117,12 +135,27 @@
           transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1); 
           box-shadow: 2px 0 12px rgba(0,0,0,0.15); 
           padding-bottom: env(safe-area-inset-bottom, 0px);
-          background: rgba(255, 255, 255, 0.9);
-          backdrop-filter: blur(20px);
-          -webkit-backdrop-filter: blur(20px);
+          background: rgba(255, 255, 255, 0.85);
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
           -webkit-overflow-scrolling: touch;
+          touch-action: pan-y;
+          pointer-events: auto;
         }
         #sidebar.open { transform: translateX(0); }
+        #sidebar-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: rgba(0,0,0,0.3);
+          z-index: 2999;
+          display: none;
+          touch-action: none;
+          pointer-events: auto;
+        }
+        #sidebar-overlay.active { display: block; }
         /* Use dynamic viewport to avoid Safari 100vh issues */
         .map-wrapper { position: relative; height: calc(var(--app-vh, 1vh) * 100 - 48px - env(safe-area-inset-bottom, 0px)); padding-bottom: env(safe-area-inset-bottom, 0px); }
         /* Larger touch targets - iOS HIG minimum 44x44px */
@@ -265,15 +298,46 @@
         var sidebar = document.getElementById('sidebar');
         var overlay = document.getElementById('sidebar-overlay');
         var btnIn = document.getElementById('toggle-sidebar-in');
-        function openSidebar(){ sidebar.classList.add('open'); if (overlay) overlay.style.display='block'; }
-        function closeSidebar(){ sidebar.classList.remove('open'); if (overlay) overlay.style.display='none'; }
+        function openSidebar(){ 
+          sidebar.classList.add('open'); 
+          if (overlay) {
+            overlay.style.display='block'; 
+            overlay.classList.add('active');
+          }
+        }
+        function closeSidebar(){ 
+          sidebar.classList.remove('open'); 
+          if (overlay) {
+            overlay.style.display='none';
+            overlay.classList.remove('active');
+          }
+        }
         if (btn && sidebar) btn.addEventListener('click', function(){
           if (sidebar.classList.contains('open')) closeSidebar(); else openSidebar();
         });
         if (btnIn) btnIn.addEventListener('click', function(){
           if (sidebar.classList.contains('open')) closeSidebar(); else openSidebar();
         });
-        if (overlay) overlay.addEventListener('click', closeSidebar);
+        if (overlay) {
+          overlay.addEventListener('click', closeSidebar);
+          overlay.addEventListener('touchstart', function(e){
+            e.preventDefault();
+            e.stopPropagation();
+            closeSidebar();
+          }, {passive: false});
+        }
+        // Prevent sidebar touch events from propagating to map
+        if (sidebar) {
+          sidebar.addEventListener('touchstart', function(e){
+            e.stopPropagation();
+          }, {passive: false});
+          sidebar.addEventListener('touchmove', function(e){
+            e.stopPropagation();
+          }, {passive: false});
+          sidebar.addEventListener('touchend', function(e){
+            e.stopPropagation();
+          }, {passive: false});
+        }
         // Swipe gestures
         var startX=0, startY=0, tracking=false;
         window.addEventListener('touchstart', function(e){

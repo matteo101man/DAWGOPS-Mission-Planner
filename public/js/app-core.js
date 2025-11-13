@@ -618,118 +618,80 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Handle touch events for two-finger rotation and pinch resize
         const mapContainer = map.getContainer();
-        let unitDragTouch = null; // Track which touch is dragging the unit
-        let mapRotationTouch = null; // Track second touch for rotation
+        let twoFingerActive = false;
+        let touch1Id = null;
+        let touch2Id = null;
 
-        // When unit is being dragged, check for second touch on map
-        container.addEventListener('touchstart', function(e) {
-          if (e.touches.length === 1 && !isLocked) {
-            unitDragTouch = e.touches[0].identifier;
-            // Listen for second touch on map
-            mapContainer.addEventListener('touchstart', handleMapTouchForRotation, {once: true, passive: false});
+        // Detect two-finger gestures on the unit marker
+        markerElement.addEventListener('touchstart', function(e) {
+          if (isLocked) return;
+          if (e.touches.length === 2) {
+            e.preventDefault();
+            e.stopPropagation();
+            twoFingerActive = true;
+            touch1Id = e.touches[0].identifier;
+            touch2Id = e.touches[1].identifier;
+            
+            // Calculate initial angle for rotation
+            const dx = e.touches[1].clientX - e.touches[0].clientX;
+            const dy = e.touches[1].clientY - e.touches[0].clientY;
+            startAngle = Math.atan2(dy, dx);
+            
+            // Calculate initial distance for pinch-to-zoom
+            initialDistance = Math.sqrt(dx * dx + dy * dy);
+            initialSize = parseInt(img.style.width) || 40;
           }
         }, {passive: false});
 
-        function handleMapTouchForRotation(e) {
-          // If we have a unit being dragged and a new touch on map, start rotation
-          if (unitDragTouch !== null && e.touches.length >= 2) {
-            const unitTouch = Array.from(e.touches).find(t => t.identifier === unitDragTouch);
-            const mapTouch = Array.from(e.touches).find(t => t.identifier !== unitDragTouch);
-            if (unitTouch && mapTouch) {
-              e.preventDefault();
-              e.stopPropagation();
-              isRotating = true;
-              mapRotationTouch = mapTouch.identifier;
-              const rect = map.getContainer().getBoundingClientRect();
-              const markerRect = markerElement.getBoundingClientRect();
-              const centerX = markerRect.left + markerRect.width/2 - rect.left;
-              const centerY = markerRect.top + markerRect.height/2 - rect.top;
-              startAngle = Math.atan2(mapTouch.clientY - rect.top - centerY, mapTouch.clientX - rect.left - centerX);
-              mapContainer.addEventListener('touchmove', handleTwoFingerRotation, {passive: false});
-              mapContainer.addEventListener('touchend', stopTwoFingerRotation, {passive: false});
-            }
-          }
-        }
-
-        function handleTwoFingerRotation(e) {
-          if (!isRotating || !mapRotationTouch) return;
-          e.preventDefault();
-          const mapTouch = Array.from(e.touches).find(t => t.identifier === mapRotationTouch);
-          if (!mapTouch) return;
-          const rect = map.getContainer().getBoundingClientRect();
-          const markerRect = markerElement.getBoundingClientRect();
-          const centerX = markerRect.left + markerRect.width/2 - rect.left;
-          const centerY = markerRect.top + markerRect.height/2 - rect.top;
-          const currentAngle = Math.atan2(mapTouch.clientY - rect.top - centerY, mapTouch.clientX - rect.left - centerX);
-          let angleDiff = (currentAngle - startAngle) * (180 / Math.PI);
-          currentRotation = (rotation + angleDiff) % 360;
-          container.style.transform = `rotate(${currentRotation}deg)`;
-        }
-
-        function stopTwoFingerRotation(e) {
-          if (isRotating) {
-            const stillActive = Array.from(e.touches).find(t => t.identifier === mapRotationTouch);
-            if (!stillActive) {
-              isRotating = false;
-              rotation = currentRotation;
-              mapRotationTouch = null;
-              const unit = placedUnits.find(u => u.marker === unitMarker);
-              if (unit) {
-                unit.rotation = rotation;
-                updateUnitHierarchy();
-              }
-              mapContainer.removeEventListener('touchmove', handleTwoFingerRotation);
-              mapContainer.removeEventListener('touchend', stopTwoFingerRotation);
-            }
-          }
-          if (e.touches.length === 0) {
-            unitDragTouch = null;
-          }
-        }
-
-        // Pinch-to-resize on bounding box
-        boundingBox.on('touchstart', function(e) {
-          if (isLocked || e.originalEvent.touches.length !== 2) return;
-          e.originalEvent.preventDefault();
-          e.originalEvent.stopPropagation();
-          isResizing = true;
-          const touches = Array.from(e.originalEvent.touches);
-          initialDistance = getDistance(touches[0], touches[1]);
-          initialSize = parseInt(img.style.width) || 40;
-          mapContainer.addEventListener('touchmove', handlePinchResize, {passive: false});
-          mapContainer.addEventListener('touchend', stopPinchResize, {passive: false});
-        });
-
-        function handlePinchResize(e) {
-          if (!isResizing || e.touches.length !== 2) return;
+        markerElement.addEventListener('touchmove', function(e) {
+          if (!twoFingerActive || e.touches.length !== 2) return;
+          
+          const touch1 = Array.from(e.touches).find(t => t.identifier === touch1Id);
+          const touch2 = Array.from(e.touches).find(t => t.identifier === touch2Id);
+          
+          if (!touch1 || !touch2) return;
+          
           e.preventDefault();
           e.stopPropagation();
-          const touches = Array.from(e.touches);
-          const currentDistance = getDistance(touches[0], touches[1]);
+          
+          // Calculate current angle and rotation
+          const dx = touch2.clientX - touch1.clientX;
+          const dy = touch2.clientY - touch1.clientY;
+          const currentAngle = Math.atan2(dy, dx);
+          const angleDiff = (currentAngle - startAngle) * (180 / Math.PI);
+          currentRotation = (rotation + angleDiff) % 360;
+          container.style.transform = `rotate(${currentRotation}deg)`;
+          
+          // Calculate current distance and scale for pinch
+          const currentDistance = Math.sqrt(dx * dx + dy * dy);
           const scale = currentDistance / initialDistance;
           const newSize = Math.max(20, Math.min(300, initialSize * scale));
           img.style.width = `${newSize}px`;
           img.style.height = `${newSize}px`;
           container.style.width = `${newSize + 20}px`;
           container.style.height = `${newSize + 40}px`;
+          
           // Update bounding box
           const latlng = unitMarker.getLatLng();
-          const sizeInDegrees = (newSize / 111000) * 0.001; // Approximate
+          const sizeInDegrees = (newSize / 111000) * 0.001;
           boundingBox.setBounds(latlng.toBounds(sizeInDegrees));
-        }
+        }, {passive: false});
 
-        function stopPinchResize(e) {
-          if (isResizing && e.touches.length < 2) {
-            isResizing = false;
-            mapContainer.removeEventListener('touchmove', handlePinchResize);
-            mapContainer.removeEventListener('touchend', stopPinchResize);
+        markerElement.addEventListener('touchend', function(e) {
+          if (twoFingerActive && e.touches.length < 2) {
+            twoFingerActive = false;
+            rotation = currentRotation;
             const unit = placedUnits.find(u => u.marker === unitMarker);
             if (unit) {
+              unit.rotation = rotation;
               unit.size = parseInt(img.style.width);
               updateUnitHierarchy();
             }
+            touch1Id = null;
+            touch2Id = null;
           }
-        }
+        }, {passive: false});
+
 
         // Update bounding box when unit moves
         unitMarker.on('drag', function() {
