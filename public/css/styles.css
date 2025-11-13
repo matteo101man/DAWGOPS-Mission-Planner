@@ -716,7 +716,10 @@
 .unit-label {
   font-size: 12px;
   font-weight: bold;
-  margin-top: 5px;
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  transform: translateX(-50%);
   text-align: center;
   white-space: nowrap;
   color: #333;
@@ -726,6 +729,7 @@
   border-radius: 2px;
   display: block;
   transition: opacity 0.2s ease;
+  z-index: 10;
 }
 
 .unit-label[style*="display: none"] {

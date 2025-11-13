@@ -528,9 +528,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Create bounding box for selection indication and pinch-to-resize
         const boundingBox = L.rectangle(unitMarker.getLatLng().toBounds(0.001), {
-          color: '#3498db',
+          color: '#000000',
           fill: false,
-          weight: 2,
+          weight: 4,
           interactive: true,
           className: 'unit-bounding-box',
           opacity: 0  // Hidden by default
@@ -689,9 +689,22 @@ document.addEventListener('DOMContentLoaded', function() {
         lockBtn.addEventListener('click', toggleLock);
         lockBtn.addEventListener('touchstart', toggleLock, {passive:false});
 
-        // Click handler for selection (with bounding box visibility)
+        // Click handler for selection (with bounding box visibility) and context menu toggle
         container.addEventListener('click', function(e) {
           e.stopPropagation();
+          
+          // Check if context menu is currently open for this unit
+          const isContextMenuOpen = contextMenu.style.display === 'block' && contextMenu.dataset.unitMarker === unitMarker;
+          
+          if (isContextMenuOpen) {
+            // If context menu is open for this unit, close it
+            contextMenu.style.display = 'none';
+            return;
+          }
+          
+          // Close context menu if it's open for any unit
+          contextMenu.style.display = 'none';
+          
           if (e.ctrlKey) {
             if (selectedUnit === unitMarker) {
               selectedUnit.getElement().classList.remove('selected');
@@ -707,10 +720,14 @@ document.addEventListener('DOMContentLoaded', function() {
             }
           } else {
             if (selectedUnit === unitMarker) {
-              selectedUnit.getElement().classList.remove('selected');
-              boundingBox.setStyle({opacity: 0}); // Hide bounding box
-              selectedUnit = null;
-              selectedUnits = [];
+              // Unit is already selected, toggle context menu
+              contextMenu.dataset.unitMarker = unitMarker;
+              contextMenu.dataset.unit = unitMarker;
+              
+              const rect = container.getBoundingClientRect();
+              contextMenu.style.display = 'block';
+              contextMenu.style.left = (rect.left + rect.width / 2) + 'px';
+              contextMenu.style.top = (rect.bottom + 5) + 'px';
             } else {
               if (selectedUnit) {
                 selectedUnit.getElement().classList.remove('selected');
@@ -2923,15 +2940,39 @@ document.addEventListener('DOMContentLoaded', function() {
         contextMenu.className = 'context-menu';
         contextMenu.style.display = 'none';
         contextMenu.innerHTML = `
-            <div class="context-menu-item" data-action="copy-position">Copy Position</div>
-            <div class="context-menu-item" data-action="delete">Delete</div>
+            <div class="context-menu-item" data-action="lock">🔒 Lock/Unlock</div>
+            <div class="context-menu-item" data-action="copy-position">📋 Copy Position</div>
+            <div class="context-menu-item" data-action="delete">🗑️ Delete</div>
         `;
         document.body.appendChild(contextMenu);
 
         // Handle context menu clicks
         contextMenu.addEventListener('click', function(e) {
             const action = e.target.getAttribute('data-action');
-            if (action === 'copy-position') {
+            if (action === 'lock') {
+                const unit = contextMenu.dataset.unit;
+                if (unit) {
+                    const unitData = placedUnits.find(u => u.marker === unit);
+                    if (unitData) {
+                        unitData.isLocked = !unitData.isLocked;
+                        const markerElement = unit.getElement();
+                        const container = markerElement.querySelector('.unit-container');
+                        const lockBtn = markerElement.querySelector('.unit-lock-btn');
+                        if (lockBtn) {
+                            lockBtn.style.color = unitData.isLocked ? '#e74c3c' : '#666';
+                        }
+                        if (container) {
+                            container.style.opacity = unitData.isLocked ? '0.7' : '1';
+                        }
+                        if (unitData.isLocked) {
+                            unit.dragging.disable();
+                        } else {
+                            unit.dragging.enable();
+                        }
+                        updateUnitHierarchy();
+                    }
+                }
+            } else if (action === 'copy-position') {
                 const unit = contextMenu.dataset.unit;
                 if (unit) {
                     const latlng = unit.getLatLng();
@@ -2988,12 +3029,22 @@ document.addEventListener('DOMContentLoaded', function() {
             e.preventDefault();
             e.stopPropagation();
             
-            const unit = this.closest('.unit-marker')._leaflet_map._leaflet_map;
-            contextMenu.dataset.unit = unit;
-            
-            contextMenu.style.display = 'block';
-            contextMenu.style.left = e.pageX + 'px';
-            contextMenu.style.top = e.pageY + 'px';
+            try {
+                const markerElement = this.closest('.unit-marker');
+                if (markerElement && markerElement._leaflet_id) {
+                    const unit = markerElement._leaflet_pos ? map._layers[markerElement._leaflet_id] : null;
+                    if (unit) {
+                        contextMenu.dataset.unit = unit;
+                        contextMenu.dataset.unitMarker = unit;
+                        
+                        contextMenu.style.display = 'block';
+                        contextMenu.style.left = e.pageX + 'px';
+                        contextMenu.style.top = e.pageY + 'px';
+                    }
+                }
+            } catch (error) {
+                console.error('Error showing context menu:', error);
+            }
         });
     }
 
