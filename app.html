@@ -10,6 +10,9 @@
     <meta name="apple-mobile-web-app-title" content="Planner">
     <link rel="apple-touch-icon" href="icons/icon-192.png">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <style>
       html, body { height: 100%; margin: 0; }
       /* Disable selection on iOS to avoid accidental highlights */
@@ -229,10 +232,26 @@
     <script>window.mgrs = mgrs;</script>
     <script src="public/js/app-core.js?v=debug"></script>
     <script>
-      // Register service worker for PWA/offline and standalone fullscreen
+      // Aggressive cache-busting: unregister all old service workers and register fresh
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
+        // Unregister all existing service workers first
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          for(let registration of registrations) {
+            registration.unregister();
+          }
+          // Wait a bit then register fresh with cache-busting
+          setTimeout(() => {
+            navigator.serviceWorker.register('./service-worker.js?v=' + Date.now(), {
+              updateViaCache: 'none'
+            }).catch(() => {});
+          }, 100);
+        });
       }
+      
+      // Clear localStorage on each load (debug mode)
+      try { 
+        localStorage.removeItem('tacticalMapState'); 
+      } catch(e) {}
       // iOS Safari 100vh fix: set --app-vh to innerHeight
       (function setVh(){
         var set = function(){ document.documentElement.style.setProperty('--app-vh', (window.innerHeight*0.01)+'px'); };

@@ -1,6 +1,6 @@
  // public/js/app-core.js with text toggle option
 document.addEventListener('DOMContentLoaded', function() {
-    // DEBUG: always reset local state on load (disable later)
+    // Always reset local state on load for fresh start
     try { localStorage.removeItem('tacticalMapState'); } catch(e) {}
     // Initialize Leaflet map
     const mapContainer = document.getElementById('tactical-map');
