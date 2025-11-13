@@ -490,11 +490,27 @@ document.addEventListener('DOMContentLoaded', function() {
         let isLocked = false;
         let customName = null;
 
-        // Rotation functionality
+        // Create invisible bounding box for pinch-to-resize
+        const boundingBox = L.rectangle(unitMarker.getLatLng().toBounds(0.001), {
+          color: 'transparent',
+          fill: false,
+          weight: 0,
+          interactive: true,
+          className: 'unit-bounding-box'
+        }).addTo(map);
+        boundingBox._unitMarker = unitMarker;
+        boundingBox._unitContainer = container;
+        boundingBox._unitImg = img;
+
+        // Two-finger rotation and pinch-to-resize state
         let isRotating = false;
+        let isResizing = false;
         let startAngle = 0;
         let currentRotation = 0;
-        let wasRotating = false; // Track if we were just rotating
+        let wasRotating = false;
+        let activeTouches = new Map(); // Track active touches
+        let initialDistance = 0;
+        let initialSize = 40;
 
         function clientPoint(ev) {
             const t = ev.touches && ev.touches[0] ? ev.touches[0] : (ev.changedTouches && ev.changedTouches[0]) || ev;
@@ -593,49 +609,168 @@ document.addEventListener('DOMContentLoaded', function() {
         window.addEventListener('blur', stopRotation);
         document.addEventListener('mouseleave', stopRotation);
 
-        // Resize functionality
-        let isResizing = false;
-        let startSize = 40;
-        function startResize(e){
-          e.stopPropagation();
-          e.preventDefault();
-          if (!isLocked) {
-            isResizing = true;
-            startSize = parseInt(img.style.width);
-            document.addEventListener('mousemove', handleResize, {passive:false});
-            document.addEventListener('mouseup', stopResize, {passive:false});
-            document.addEventListener('touchmove', handleResize, {passive:false});
-            document.addEventListener('touchend', stopResize, {passive:false});
+        // Pinch-to-resize gesture on bounding box
+        function getDistance(touch1, touch2) {
+          const dx = touch1.clientX - touch2.clientX;
+          const dy = touch1.clientY - touch2.clientY;
+          return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        // Handle touch events for two-finger rotation and pinch resize
+        const mapContainer = map.getContainer();
+        let unitDragTouch = null; // Track which touch is dragging the unit
+        let mapRotationTouch = null; // Track second touch for rotation
+
+        // When unit is being dragged, check for second touch on map
+        container.addEventListener('touchstart', function(e) {
+          if (e.touches.length === 1 && !isLocked) {
+            unitDragTouch = e.touches[0].identifier;
+            // Listen for second touch on map
+            mapContainer.addEventListener('touchstart', handleMapTouchForRotation, {once: true, passive: false});
+          }
+        }, {passive: false});
+
+        function handleMapTouchForRotation(e) {
+          // If we have a unit being dragged and a new touch on map, start rotation
+          if (unitDragTouch !== null && e.touches.length >= 2) {
+            const unitTouch = Array.from(e.touches).find(t => t.identifier === unitDragTouch);
+            const mapTouch = Array.from(e.touches).find(t => t.identifier !== unitDragTouch);
+            if (unitTouch && mapTouch) {
+              e.preventDefault();
+              e.stopPropagation();
+              isRotating = true;
+              mapRotationTouch = mapTouch.identifier;
+              const rect = map.getContainer().getBoundingClientRect();
+              const markerRect = markerElement.getBoundingClientRect();
+              const centerX = markerRect.left + markerRect.width/2 - rect.left;
+              const centerY = markerRect.top + markerRect.height/2 - rect.top;
+              startAngle = Math.atan2(mapTouch.clientY - rect.top - centerY, mapTouch.clientX - rect.left - centerX);
+              mapContainer.addEventListener('touchmove', handleTwoFingerRotation, {passive: false});
+              mapContainer.addEventListener('touchend', stopTwoFingerRotation, {passive: false});
+            }
           }
         }
-        resizeBtn.addEventListener('mousedown', startResize);
-        resizeBtn.addEventListener('touchstart', startResize, {passive:false});
 
-        function handleResize(e) {
-          if (!isResizing) return;
+        function handleTwoFingerRotation(e) {
+          if (!isRotating || !mapRotationTouch) return;
+          e.preventDefault();
+          const mapTouch = Array.from(e.touches).find(t => t.identifier === mapRotationTouch);
+          if (!mapTouch) return;
           const rect = map.getContainer().getBoundingClientRect();
-          const p = clientPoint(e);
-          const x = p.x - rect.left;
-          const y = p.y - rect.top;
           const markerRect = markerElement.getBoundingClientRect();
-          const markerX = markerRect.left - rect.left;
-          const markerY = markerRect.top - rect.top;
-          const dx = x - markerX;
-          const dy = y - markerY;
-          const newSize = Math.max(20, Math.min(300, Math.max(Math.abs(dx), Math.abs(dy))));
+          const centerX = markerRect.left + markerRect.width/2 - rect.left;
+          const centerY = markerRect.top + markerRect.height/2 - rect.top;
+          const currentAngle = Math.atan2(mapTouch.clientY - rect.top - centerY, mapTouch.clientX - rect.left - centerX);
+          let angleDiff = (currentAngle - startAngle) * (180 / Math.PI);
+          currentRotation = (rotation + angleDiff) % 360;
+          container.style.transform = `rotate(${currentRotation}deg)`;
+        }
+
+        function stopTwoFingerRotation(e) {
+          if (isRotating) {
+            const stillActive = Array.from(e.touches).find(t => t.identifier === mapRotationTouch);
+            if (!stillActive) {
+              isRotating = false;
+              rotation = currentRotation;
+              mapRotationTouch = null;
+              const unit = placedUnits.find(u => u.marker === unitMarker);
+              if (unit) {
+                unit.rotation = rotation;
+                updateUnitHierarchy();
+              }
+              mapContainer.removeEventListener('touchmove', handleTwoFingerRotation);
+              mapContainer.removeEventListener('touchend', stopTwoFingerRotation);
+            }
+          }
+          if (e.touches.length === 0) {
+            unitDragTouch = null;
+          }
+        }
+
+        // Pinch-to-resize on bounding box
+        boundingBox.on('touchstart', function(e) {
+          if (isLocked || e.originalEvent.touches.length !== 2) return;
+          e.originalEvent.preventDefault();
+          e.originalEvent.stopPropagation();
+          isResizing = true;
+          const touches = Array.from(e.originalEvent.touches);
+          initialDistance = getDistance(touches[0], touches[1]);
+          initialSize = parseInt(img.style.width) || 40;
+          mapContainer.addEventListener('touchmove', handlePinchResize, {passive: false});
+          mapContainer.addEventListener('touchend', stopPinchResize, {passive: false});
+        });
+
+        function handlePinchResize(e) {
+          if (!isResizing || e.touches.length !== 2) return;
+          e.preventDefault();
+          e.stopPropagation();
+          const touches = Array.from(e.touches);
+          const currentDistance = getDistance(touches[0], touches[1]);
+          const scale = currentDistance / initialDistance;
+          const newSize = Math.max(20, Math.min(300, initialSize * scale));
           img.style.width = `${newSize}px`;
           img.style.height = `${newSize}px`;
           container.style.width = `${newSize + 20}px`;
           container.style.height = `${newSize + 40}px`;
+          // Update bounding box
+          const latlng = unitMarker.getLatLng();
+          const sizeInDegrees = (newSize / 111000) * 0.001; // Approximate
+          boundingBox.setBounds(latlng.toBounds(sizeInDegrees));
         }
 
-        function stopResize() {
-          isResizing = false;
-          document.removeEventListener('mousemove', handleResize);
-          document.removeEventListener('mouseup', stopResize);
-          document.removeEventListener('touchmove', handleResize);
-          document.removeEventListener('touchend', stopResize);
+        function stopPinchResize(e) {
+          if (isResizing && e.touches.length < 2) {
+            isResizing = false;
+            mapContainer.removeEventListener('touchmove', handlePinchResize);
+            mapContainer.removeEventListener('touchend', stopPinchResize);
+            const unit = placedUnits.find(u => u.marker === unitMarker);
+            if (unit) {
+              unit.size = parseInt(img.style.width);
+              updateUnitHierarchy();
+            }
+          }
         }
+
+        // Update bounding box when unit moves
+        unitMarker.on('drag', function() {
+          const latlng = unitMarker.getLatLng();
+          const size = parseInt(img.style.width) || 40;
+          const sizeInDegrees = (size / 111000) * 0.001;
+          boundingBox.setBounds(latlng.toBounds(sizeInDegrees));
+        });
+
+        // Keep resize button for desktop/fallback
+        resizeBtn.addEventListener('mousedown', function(e){
+          e.stopPropagation();
+          e.preventDefault();
+          if (!isLocked) {
+            isResizing = true;
+            initialSize = parseInt(img.style.width) || 40;
+            const rect = map.getContainer().getBoundingClientRect();
+            const startX = e.clientX - rect.left;
+            const startY = e.clientY - rect.top;
+            document.addEventListener('mousemove', function handleMouseResize(e) {
+              if (!isResizing) return;
+              const x = e.clientX - rect.left;
+              const y = e.clientY - rect.top;
+              const dx = x - startX;
+              const dy = y - startY;
+              const newSize = Math.max(20, Math.min(300, initialSize + Math.max(Math.abs(dx), Math.abs(dy))));
+              img.style.width = `${newSize}px`;
+              img.style.height = `${newSize}px`;
+              container.style.width = `${newSize + 20}px`;
+              container.style.height = `${newSize + 40}px`;
+              const latlng = unitMarker.getLatLng();
+              const sizeInDegrees = (newSize / 111000) * 0.001;
+              boundingBox.setBounds(latlng.toBounds(sizeInDegrees));
+            }, {passive:false});
+            document.addEventListener('mouseup', function stopMouseResize() {
+              isResizing = false;
+              document.removeEventListener('mousemove', arguments.callee);
+              document.removeEventListener('mouseup', arguments.callee);
+            }, {once: true});
+          }
+        });
 
         // Lock functionality
         function toggleLock(e){
@@ -716,7 +851,9 @@ document.addEventListener('DOMContentLoaded', function() {
           rotation: 0,
           isLocked: false,
           customName: null,
-          type: 'symbol'
+          type: 'symbol',
+          size: 40,
+          boundingBox: boundingBox
         });
 
         updateUnitHierarchy();
@@ -959,6 +1096,9 @@ document.addEventListener('DOMContentLoaded', function() {
           map.removeLayer(unit.textMarker);
         } else {
           map.removeLayer(unit.marker);
+          if (unit.boundingBox) {
+            map.removeLayer(unit.boundingBox);
+          }
         }
         placedUnits.splice(index, 1);
         if (selectedUnit === unit.marker) {
@@ -1295,7 +1435,6 @@ document.addEventListener('DOMContentLoaded', function() {
         initUnitPalette();
         initMeasurementTools();
         initTextTool();
-        initTextFormatting();
         preventScrollOnSelection();
         createMeasureDistanceButton();
         
@@ -1326,6 +1465,9 @@ document.addEventListener('DOMContentLoaded', function() {
         // Remove all unit markers
         placedUnits.forEach(unit => {
           map.removeLayer(unit.marker);
+          if (unit.boundingBox) {
+            map.removeLayer(unit.boundingBox);
+          }
         });
         
         // Clear placed units array
@@ -2372,6 +2514,9 @@ document.addEventListener('DOMContentLoaded', function() {
         // Clear placed units
         placedUnits.forEach(unit => {
           map.removeLayer(unit.marker);
+          if (unit.boundingBox) {
+            map.removeLayer(unit.boundingBox);
+          }
         });
         placedUnits = [];
         selectedUnit = null;
