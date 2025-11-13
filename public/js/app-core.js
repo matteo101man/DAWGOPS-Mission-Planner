@@ -605,6 +605,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 unit.position = [unitMarker.getLatLng().lat, unitMarker.getLatLng().lng];
                 updateUnitHierarchy();
                 saveState();
+                syncUnitToFirebase(unit); // Sync position update
               }
               // Re-enable map dragging
               map.dragging.enable();
@@ -751,7 +752,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 unit.rotation = rotation;
                 unit.size = parseInt(img.style.width);
                 updateUnitHierarchy();
-                saveState(); // Save after gesture
+                saveState();
+                syncUnitToFirebase(unit); // Sync rotation/size update
               }
               touch1Id = null;
               touch2Id = null;
@@ -802,6 +804,7 @@ document.addEventListener('DOMContentLoaded', function() {
           if (unit) {
             unit.isLocked = isLocked;
             updateUnitHierarchy();
+            syncUnitToFirebase(unit); // Sync lock state
           }
         }
         lockBtn.addEventListener('click', toggleLock);
@@ -844,6 +847,7 @@ document.addEventListener('DOMContentLoaded', function() {
               if (unit) {
                 unit.customName = customName;
                 updateUnitHierarchy();
+                syncUnitToFirebase(unit); // Sync name update
               }
             }
           }
@@ -863,6 +867,7 @@ document.addEventListener('DOMContentLoaded', function() {
               if (unit) {
                 unit.customName = customName;
                 updateUnitHierarchy();
+                syncUnitToFirebase(unit); // Sync name update
               }
             }
           }
@@ -886,6 +891,10 @@ document.addEventListener('DOMContentLoaded', function() {
         updateUnitHierarchy();
         saveState();
         addContextMenuListeners(container);
+        
+        // Sync this unit to Firebase immediately
+        const newUnit = placedUnits[placedUnits.length - 1];
+        syncUnitToFirebase(newUnit);
 
         // Copy position button (text marker follows parent unit and appears above label)
         function doCopy(e){
@@ -1121,6 +1130,12 @@ document.addEventListener('DOMContentLoaded', function() {
     function removeUnit(index) {
       if (index >= 0 && index < placedUnits.length) {
         const unit = placedUnits[index];
+        
+        // Remove from Firebase first
+        if (unit.id) {
+          removeUnitFromFirebase(unit.id);
+        }
+        
         if (unit.type === 'distance') {
           map.removeLayer(unit.marker);
           map.removeLayer(unit.textMarker);
@@ -3125,28 +3140,50 @@ document.addEventListener('DOMContentLoaded', function() {
         };
         localStorage.setItem('tacticalMapState', JSON.stringify(state));
         
-        // Sync to Firebase if available (clean undefined values)
-        if (typeof firebase !== 'undefined' && window.database) {
+        // NOTE: Firebase sync is now handled per-unit, not in saveState
+        // See syncUnitToFirebase() function below
+    }
+    
+    // Sync a single unit to Firebase (just like location tracking)
+    function syncUnitToFirebase(unit) {
+        if (typeof firebase !== 'undefined' && window.database && unit.id) {
             try {
-                lastSyncTime = Date.now();
-                // Clean units for Firebase (remove undefined values and filter out invalid units)
-                const cleanedUnits = state.placedUnits
-                    .filter(unit => unit.position && Array.isArray(unit.position)) // Only sync units with valid positions
-                    .map(unit => cleanObjectForFirebase(unit));
-                
-                window.database.ref('mission/units').set({
-                    units: cleanedUnits,
-                    lastUpdate: lastSyncTime,
+                const cleanedUnit = cleanObjectForFirebase({
+                    id: unit.id,
+                    position: unit.position || (unit.marker ? [unit.marker.getLatLng().lat, unit.marker.getLatLng().lng] : null),
+                    symbolKey: unit.symbolKey,
+                    rotation: unit.rotation || 0,
+                    size: unit.size || 40,
+                    customName: unit.customName,
+                    isLocked: unit.isLocked || false,
+                    type: unit.type || 'symbol',
+                    lastUpdate: Date.now(),
                     userId: window.userId || 'unknown'
-                }).then(() => {
-                    console.log('✅ Firebase sync successful');
-                }).catch((error) => {
-                    console.error('❌ Firebase sync error:', error);
-                    console.error('Error code:', error.code);
-                    console.error('Error message:', error.message);
                 });
+                
+                // Only sync if we have a valid position
+                if (cleanedUnit.position && Array.isArray(cleanedUnit.position)) {
+                    window.database.ref('mission/units/' + unit.id).set(cleanedUnit)
+                        .catch((error) => {
+                            console.error('❌ Unit sync error:', error.code, error.message);
+                        });
+                }
             } catch (e) {
-                console.error('❌ Firebase sync failed:', e);
+                console.error('❌ Unit sync failed:', e);
+            }
+        }
+    }
+    
+    // Remove a unit from Firebase
+    function removeUnitFromFirebase(unitId) {
+        if (typeof firebase !== 'undefined' && window.database && unitId) {
+            try {
+                window.database.ref('mission/units/' + unitId).remove()
+                    .catch((error) => {
+                        console.error('❌ Unit removal error:', error.code, error.message);
+                    });
+            } catch (e) {
+                console.error('❌ Unit removal failed:', e);
             }
         }
     }
@@ -3260,50 +3297,27 @@ document.addEventListener('DOMContentLoaded', function() {
     map.on('moveend', saveState);
     map.on('zoomend', saveState);
     
-    // Listen for unit updates from Firebase (from other users) with full merge logic
+    // Listen for unit updates from Firebase (EXACTLY like location tracking)
     if (typeof firebase !== 'undefined' && window.database) {
         try {
-            let isFirstLoad = true;
-            window.database.ref('mission/units').on('value', (snapshot) => {
-                const data = snapshot.val();
-                if (!data || !data.units) return;
+            // Listen for NEW units added by other users
+            window.database.ref('mission/units').on('child_added', (snapshot) => {
+                const remoteUnit = snapshot.val();
+                if (!remoteUnit || !remoteUnit.id) return;
                 
-                // Skip first load (we already have local state)
-                if (isFirstLoad) {
-                    isFirstLoad = false;
-                    return;
-                }
+                // Skip if this unit is from us (we already have it locally)
+                if (remoteUnit.userId === window.userId) return;
                 
-                // Check if this is an update from another user
-                if (data.userId === window.userId) {
-                    // This is our own update, skip
-                    return;
-                }
+                // Check if we already have this unit
+                const existingUnit = placedUnits.find(u => u.id === remoteUnit.id);
+                if (existingUnit) return; // Already have it
                 
-                // Check if this update is newer than our last sync
-                if (data.lastUpdate <= lastSyncTime) {
-                    return; // Older update, ignore
-                }
+                console.log('➕ Adding unit from another user:', remoteUnit.id);
                 
-                console.log('📦 Syncing units from another user...');
-                
-                const remoteUnits = data.units || [];
-                const remoteUnitIds = new Set(remoteUnits.map(u => u.id).filter(id => id));
-                const localUnitIds = new Set(placedUnits.map(u => u.id).filter(id => id));
-                
-                // 1. ADD new units from remote that don't exist locally
-                remoteUnits.forEach(remoteUnit => {
-                    if (!remoteUnit.id || localUnitIds.has(remoteUnit.id)) return;
-                    
-                    console.log('➕ Adding new unit:', remoteUnit.id);
-                    // Create the unit on the map
-                    if (remoteUnit.type === 'symbol' && remoteUnit.symbolKey && symbolImages[remoteUnit.symbolKey]) {
-                        if (window.TacticalApp && window.TacticalApp.createUnitFromSymbol) {
-                            window.TacticalApp.createUnitFromSymbol(remoteUnit.symbolKey, remoteUnit.position[0], remoteUnit.position[1]);
-                        } else {
-                            console.error('TacticalApp.createUnitFromSymbol not available yet');
-                            return;
-                        }
+                // Create the unit on the map
+                if (remoteUnit.type === 'symbol' && remoteUnit.symbolKey && symbolImages[remoteUnit.symbolKey]) {
+                    if (window.TacticalApp && window.TacticalApp.createUnitFromSymbol) {
+                        window.TacticalApp.createUnitFromSymbol(remoteUnit.symbolKey, remoteUnit.position[0], remoteUnit.position[1]);
                         
                         // Update the newly created unit with remote properties
                         const newUnit = placedUnits[placedUnits.length - 1];
@@ -3330,78 +3344,85 @@ document.addEventListener('DOMContentLoaded', function() {
                                 label.textContent = newUnit.customName;
                             }
                         }
-                    }
-                });
-                
-                // 2. UPDATE existing units that have changed
-                remoteUnits.forEach(remoteUnit => {
-                    if (!remoteUnit.id) return;
-                    
-                    const localUnit = placedUnits.find(u => u.id === remoteUnit.id);
-                    if (!localUnit) return;
-                    
-                    // Check if position, rotation, or size changed
-                    const posChanged = !localUnit.position || 
-                        Math.abs(localUnit.position[0] - remoteUnit.position[0]) > 0.00001 ||
-                        Math.abs(localUnit.position[1] - remoteUnit.position[1]) > 0.00001;
-                    const rotChanged = localUnit.rotation !== remoteUnit.rotation;
-                    const sizeChanged = localUnit.size !== remoteUnit.size;
-                    const nameChanged = localUnit.customName !== remoteUnit.customName;
-                    
-                    if (posChanged || rotChanged || sizeChanged || nameChanged) {
-                        console.log('🔄 Updating unit:', remoteUnit.id);
                         
-                        // Update position
-                        if (posChanged && localUnit.marker) {
-                            localUnit.marker.setLatLng([remoteUnit.position[0], remoteUnit.position[1]]);
-                            localUnit.position = remoteUnit.position;
-                            if (localUnit.boundingBox) {
-                                localUnit.boundingBox.setBounds(
-                                    L.latLng(remoteUnit.position[0], remoteUnit.position[1]).toBounds(localUnit.boundingBox._boxSize)
-                                );
-                            }
-                        }
-                        
-                        // Update visual properties
-                        const markerElement = localUnit.marker.getElement();
-                        if (markerElement) {
-                            const container = markerElement.querySelector('.unit-container');
-                            const img = markerElement.querySelector('img');
-                            const label = markerElement.querySelector('.unit-label');
-                            
-                            if (rotChanged && container) {
-                                localUnit.rotation = remoteUnit.rotation;
-                                container.style.transform = `rotate(${remoteUnit.rotation}deg)`;
-                            }
-                            
-                            if (sizeChanged && img) {
-                                localUnit.size = remoteUnit.size;
-                                img.style.width = `${remoteUnit.size}px`;
-                                img.style.height = `${remoteUnit.size}px`;
-                            }
-                            
-                            if (nameChanged && label && remoteUnit.customName) {
-                                localUnit.customName = remoteUnit.customName;
-                                label.textContent = remoteUnit.customName;
-                            }
-                        }
+                        updateUnitHierarchy();
                     }
-                });
-                
-                // 3. REMOVE units that exist locally but not in remote
-                placedUnits.forEach((localUnit, index) => {
-                    if (localUnit.id && !remoteUnitIds.has(localUnit.id)) {
-                        console.log('➖ Removing deleted unit:', localUnit.id);
-                        removeUnit(index);
-                    }
-                });
-                
-                // Update UI
-                updateUnitHierarchy();
-                console.log('✅ Sync complete');
+                }
             });
+            
+            // Listen for CHANGES to existing units
+            window.database.ref('mission/units').on('child_changed', (snapshot) => {
+                const remoteUnit = snapshot.val();
+                if (!remoteUnit || !remoteUnit.id) return;
+                
+                // Skip if this change is from us
+                if (remoteUnit.userId === window.userId) return;
+                
+                const localUnit = placedUnits.find(u => u.id === remoteUnit.id);
+                if (!localUnit) return;
+                
+                console.log('🔄 Updating unit from another user:', remoteUnit.id);
+                
+                // Update position
+                if (remoteUnit.position && localUnit.marker) {
+                    localUnit.marker.setLatLng([remoteUnit.position[0], remoteUnit.position[1]]);
+                    localUnit.position = remoteUnit.position;
+                    if (localUnit.boundingBox) {
+                        localUnit.boundingBox.setBounds(
+                            L.latLng(remoteUnit.position[0], remoteUnit.position[1]).toBounds(localUnit.boundingBox._boxSize)
+                        );
+                    }
+                }
+                
+                // Update visual properties
+                const markerElement = localUnit.marker.getElement();
+                if (markerElement) {
+                    const container = markerElement.querySelector('.unit-container');
+                    const img = markerElement.querySelector('img');
+                    const label = markerElement.querySelector('.unit-label');
+                    
+                    if (container && remoteUnit.rotation !== undefined) {
+                        localUnit.rotation = remoteUnit.rotation;
+                        container.style.transform = `rotate(${remoteUnit.rotation}deg)`;
+                    }
+                    
+                    if (img && remoteUnit.size) {
+                        localUnit.size = remoteUnit.size;
+                        img.style.width = `${remoteUnit.size}px`;
+                        img.style.height = `${remoteUnit.size}px`;
+                    }
+                    
+                    if (label && remoteUnit.customName) {
+                        localUnit.customName = remoteUnit.customName;
+                        label.textContent = remoteUnit.customName;
+                    }
+                }
+                
+                updateUnitHierarchy();
+            });
+            
+            // Listen for DELETIONS
+            window.database.ref('mission/units').on('child_removed', (snapshot) => {
+                const remoteUnit = snapshot.val();
+                if (!remoteUnit || !remoteUnit.id) return;
+                
+                console.log('➖ Removing deleted unit from another user:', remoteUnit.id);
+                
+                const index = placedUnits.findIndex(u => u.id === remoteUnit.id);
+                if (index !== -1) {
+                    const unit = placedUnits[index];
+                    // Remove from map
+                    if (unit.marker) map.removeLayer(unit.marker);
+                    if (unit.boundingBox) map.removeLayer(unit.boundingBox);
+                    // Remove from array
+                    placedUnits.splice(index, 1);
+                    updateUnitHierarchy();
+                }
+            });
+            
+            console.log('✅ Firebase unit sync listeners initialized');
         } catch (e) {
-            console.log('Firebase listener setup failed:', e);
+            console.error('❌ Firebase listener setup failed:', e);
         }
     }
 
