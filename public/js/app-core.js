@@ -3198,18 +3198,18 @@ document.addEventListener('DOMContentLoaded', function() {
         addContextMenuListeners(container);
     }
 
-    // Initialize geolocation functionality
+    // Initialize geolocation functionality with Firebase sync
     function initGeolocation() {
         const yourLocationDisplay = document.getElementById('your-location-mgrs');
         const refreshLocationBtn = document.getElementById('refresh-location');
         let watchId = null;
         let myLocationMarker = null;
+        let otherUsersMarkers = {}; // Track other users' markers
         
-        // Get device name for display
-        const deviceName = (navigator.userAgent.includes('iPhone') ? 'iPhone' : 
-                           navigator.userAgent.includes('iPad') ? 'iPad' :
-                           navigator.userAgent.includes('Android') ? 'Android' :
-                           'Device') + ' User';
+        // Get user info from firebase-config.js
+        const myUserId = window.userId || 'user_' + Math.random().toString(36).substr(2, 9);
+        const myDeviceName = window.deviceName || 'Anonymous';
+        const myUserColor = window.userColor || '#4285F4';
         
         let followEnabled = ('ontouchstart' in window || navigator.maxTouchPoints > 0); // follow by default on touch devices
         // Disable follow if user manually drags the map
@@ -3230,16 +3230,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Create or update location marker on map
                 if (!myLocationMarker) {
-                    // Create new marker with pulsing blue dot
+                    // Create new marker with pulsing dot
                     myLocationMarker = L.marker([lat, lng], {
                         icon: L.divIcon({
                             className: 'live-location-marker',
                             html: `
                                 <div style="position: relative; width: 40px; height: 40px;">
-                                    <div class="pulse-ring"></div>
-                                    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 16px; height: 16px; background: #4285F4; border: 3px solid white; border-radius: 50%; box-shadow: 0 2px 6px rgba(0,0,0,0.4); z-index: 2;"></div>
+                                    <div class="pulse-ring" style="border-color: ${myUserColor};"></div>
+                                    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 16px; height: 16px; background: ${myUserColor}; border: 3px solid white; border-radius: 50%; box-shadow: 0 2px 6px rgba(0,0,0,0.4); z-index: 2;"></div>
                                 </div>
-                                <div style="position: absolute; top: 45px; left: 50%; transform: translateX(-50%); background: rgba(66, 133, 244, 0.95); color: white; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">${deviceName}</div>
+                                <div style="position: absolute; top: 45px; left: 50%; transform: translateX(-50%); background: ${myUserColor}; color: white; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">${myDeviceName}</div>
                             `,
                             iconSize: [40, 70],
                             iconAnchor: [20, 20]
@@ -3249,6 +3249,21 @@ document.addEventListener('DOMContentLoaded', function() {
                 } else {
                     // Update existing marker position
                     myLocationMarker.setLatLng([lat, lng]);
+                }
+                
+                // Sync location to Firebase if available
+                if (typeof firebase !== 'undefined' && window.database) {
+                    try {
+                        window.database.ref('users/' + myUserId).set({
+                            lat: lat,
+                            lng: lng,
+                            name: myDeviceName,
+                            color: myUserColor,
+                            lastUpdate: Date.now()
+                        });
+                    } catch (e) {
+                        console.log('Firebase not configured, running in offline mode');
+                    }
                 }
                 
                 // Auto-follow device location on map if enabled
@@ -3261,6 +3276,63 @@ document.addEventListener('DOMContentLoaded', function() {
                 yourLocationDisplay.textContent = 'Location conversion error';
                 yourLocationDisplay.style.backgroundColor = '#f8d7da'; // Light red for error
                 yourLocationDisplay.style.color = '#721c24';
+            }
+        }
+        
+        // Listen for other users' locations from Firebase
+        if (typeof firebase !== 'undefined' && window.database) {
+            try {
+                window.database.ref('users').on('value', (snapshot) => {
+                    const users = snapshot.val();
+                    if (!users) return;
+                    
+                    // Remove stale users (>30 seconds old)
+                    const now = Date.now();
+                    Object.keys(users).forEach(uid => {
+                        if (now - users[uid].lastUpdate > 30000) {
+                            if (otherUsersMarkers[uid]) {
+                                map.removeLayer(otherUsersMarkers[uid]);
+                                delete otherUsersMarkers[uid];
+                            }
+                        }
+                    });
+                    
+                    // Update/create markers for active users
+                    Object.keys(users).forEach(uid => {
+                        if (uid === myUserId) return; // Skip own marker
+                        const user = users[uid];
+                        if (now - user.lastUpdate > 30000) return; // Skip stale
+                        
+                        if (otherUsersMarkers[uid]) {
+                            // Update existing marker
+                            otherUsersMarkers[uid].setLatLng([user.lat, user.lng]);
+                        } else {
+                            // Create new marker for this user
+                            otherUsersMarkers[uid] = L.marker([user.lat, user.lng], {
+                                icon: L.divIcon({
+                                    className: 'live-location-marker',
+                                    html: `
+                                        <div style="position: relative; width: 40px; height: 40px;">
+                                            <div class="pulse-ring" style="border-color: ${user.color};"></div>
+                                            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 16px; height: 16px; background: ${user.color}; border: 3px solid white; border-radius: 50%; box-shadow: 0 2px 6px rgba(0,0,0,0.4); z-index: 2;"></div>
+                                        </div>
+                                        <div style="position: absolute; top: 45px; left: 50%; transform: translateX(-50%); background: ${user.color}; color: white; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">${user.name}</div>
+                                    `,
+                                    iconSize: [40, 70],
+                                    iconAnchor: [20, 20]
+                                }),
+                                zIndexOffset: 1999
+                            }).addTo(map);
+                        }
+                    });
+                });
+                
+                // Clean up on page unload
+                window.addEventListener('beforeunload', () => {
+                    window.database.ref('users/' + myUserId).remove();
+                });
+            } catch (e) {
+                console.log('Firebase not configured, running in offline mode');
             }
         }
         
