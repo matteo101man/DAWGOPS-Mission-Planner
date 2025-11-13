@@ -3089,6 +3089,18 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // State persistence functions with Firebase sync
     let lastSyncTime = Date.now();
+    
+    // Helper to remove undefined values (Firebase accepts null but not undefined)
+    function cleanObjectForFirebase(obj) {
+        const cleaned = {};
+        for (const key in obj) {
+            if (obj[key] !== undefined) {
+                cleaned[key] = obj[key];
+            }
+        }
+        return cleaned;
+    }
+    
     function saveState() {
         const state = {
             mapView: {
@@ -3113,12 +3125,17 @@ document.addEventListener('DOMContentLoaded', function() {
         };
         localStorage.setItem('tacticalMapState', JSON.stringify(state));
         
-        // Sync to Firebase if available
+        // Sync to Firebase if available (clean undefined values)
         if (typeof firebase !== 'undefined' && window.database) {
             try {
                 lastSyncTime = Date.now();
+                // Clean units for Firebase (remove undefined values and filter out invalid units)
+                const cleanedUnits = state.placedUnits
+                    .filter(unit => unit.position && Array.isArray(unit.position)) // Only sync units with valid positions
+                    .map(unit => cleanObjectForFirebase(unit));
+                
                 window.database.ref('mission/units').set({
-                    units: state.placedUnits,
+                    units: cleanedUnits,
                     lastUpdate: lastSyncTime,
                     userId: window.userId || 'unknown'
                 }).then(() => {
