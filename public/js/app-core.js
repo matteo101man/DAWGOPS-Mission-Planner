@@ -787,6 +787,18 @@ document.addEventListener('DOMContentLoaded', function() {
           }
         });
 
+        // Sync position when drag ends (for standard Leaflet drag, not touch drag)
+        unitMarker.on('dragend', function() {
+          if (isLocked) return;
+          const unit = placedUnits.find(u => u.marker === unitMarker);
+          if (unit) {
+            unit.position = [unitMarker.getLatLng().lat, unitMarker.getLatLng().lng];
+            updateUnitHierarchy();
+            saveState();
+            syncUnitToFirebase(unit); // Sync position update
+          }
+        });
+
 
         // Lock functionality
         function toggleLock(e){
@@ -892,9 +904,11 @@ document.addEventListener('DOMContentLoaded', function() {
         saveState();
         addContextMenuListeners(container);
         
-        // Sync this unit to Firebase immediately
+        // Sync this unit to Firebase immediately (unless it's being created from Firebase)
         const newUnit = placedUnits[placedUnits.length - 1];
-        syncUnitToFirebase(newUnit);
+        if (!isCreatingFromFirebase) {
+            syncUnitToFirebase(newUnit);
+        }
 
         // Copy position button (text marker follows parent unit and appears above label)
         function doCopy(e){
@@ -3144,8 +3158,16 @@ document.addEventListener('DOMContentLoaded', function() {
         // See syncUnitToFirebase() function below
     }
     
+    // Flag to prevent sync loops when creating units from Firebase
+    let isCreatingFromFirebase = false;
+
     // Sync a single unit to Firebase (just like location tracking)
-    function syncUnitToFirebase(unit) {
+    function syncUnitToFirebase(unit, skipIfFromFirebase = false) {
+        // Skip sync if this unit is being created from Firebase to prevent loops
+        if (skipIfFromFirebase && isCreatingFromFirebase) {
+            return;
+        }
+        
         if (typeof firebase !== 'undefined' && window.database && unit.id) {
             try {
                 const cleanedUnit = cleanObjectForFirebase({
@@ -3314,39 +3336,102 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 console.log('➕ Adding unit from another user:', remoteUnit.id);
                 
-                // Create the unit on the map
-                if (remoteUnit.type === 'symbol' && remoteUnit.symbolKey && symbolImages[remoteUnit.symbolKey]) {
-                    if (window.TacticalApp && window.TacticalApp.createUnitFromSymbol) {
-                        window.TacticalApp.createUnitFromSymbol(remoteUnit.symbolKey, remoteUnit.position[0], remoteUnit.position[1]);
-                        
-                        // Update the newly created unit with remote properties
-                        const newUnit = placedUnits[placedUnits.length - 1];
-                        newUnit.id = remoteUnit.id;
-                        newUnit.rotation = remoteUnit.rotation || 0;
-                        newUnit.size = remoteUnit.size || 40;
-                        newUnit.customName = remoteUnit.customName;
-                        newUnit.isLocked = remoteUnit.isLocked || false;
-                        
-                        // Update visual representation
-                        const marker = newUnit.marker;
-                        const markerElement = marker.getElement();
-                        if (markerElement) {
-                            const container = markerElement.querySelector('.unit-container');
-                            const img = markerElement.querySelector('img');
-                            const label = markerElement.querySelector('.unit-label');
+                // Set flag to prevent sync loop
+                isCreatingFromFirebase = true;
+                
+                try {
+                    // Create the unit on the map based on type
+                    if (remoteUnit.type === 'symbol' && remoteUnit.symbolKey && symbolImages[remoteUnit.symbolKey]) {
+                        if (window.TacticalApp && window.TacticalApp.createUnitFromSymbol) {
+                            window.TacticalApp.createUnitFromSymbol(remoteUnit.symbolKey, remoteUnit.position[0], remoteUnit.position[1]);
                             
-                            if (container) container.style.transform = `rotate(${newUnit.rotation}deg)`;
-                            if (img) {
-                                img.style.width = `${newUnit.size}px`;
-                                img.style.height = `${newUnit.size}px`;
-                            }
-                            if (label && newUnit.customName) {
-                                label.textContent = newUnit.customName;
+                            // Update the newly created unit with remote properties
+                            const newUnit = placedUnits[placedUnits.length - 1];
+                            if (newUnit) {
+                                newUnit.id = remoteUnit.id;
+                                newUnit.rotation = remoteUnit.rotation || 0;
+                                newUnit.size = remoteUnit.size || 40;
+                                newUnit.customName = remoteUnit.customName;
+                                newUnit.isLocked = remoteUnit.isLocked || false;
+                                
+                                // Update visual representation
+                                const marker = newUnit.marker;
+                                const markerElement = marker.getElement();
+                                if (markerElement) {
+                                    const container = markerElement.querySelector('.unit-container');
+                                    const img = markerElement.querySelector('img');
+                                    const label = markerElement.querySelector('.unit-label');
+                                    
+                                    if (container) container.style.transform = `rotate(${newUnit.rotation}deg)`;
+                                    if (img) {
+                                        img.style.width = `${newUnit.size}px`;
+                                        img.style.height = `${newUnit.size}px`;
+                                    }
+                                    if (label && newUnit.customName) {
+                                        label.textContent = newUnit.customName;
+                                    }
+                                }
+                                
+                                // Update bounding box if it exists
+                                if (newUnit.boundingBox && remoteUnit.position) {
+                                    newUnit.boundingBox.setBounds(
+                                        L.latLng(remoteUnit.position[0], remoteUnit.position[1]).toBounds(newUnit.boundingBox._boxSize || 0.0012)
+                                    );
+                                }
+                                
+                                updateUnitHierarchy();
                             }
                         }
+                    } else if (remoteUnit.type === 'point' && remoteUnit.position) {
+                        // Handle point markers
+                        const pointMarker = L.marker([remoteUnit.position[0], remoteUnit.position[1]], {
+                            icon: L.divIcon({
+                                className: 'unit-marker',
+                                html: `
+                                    <div class="unit-container">
+                                        <div style="width: 20px; height: 20px; background-color: black; margin: 10px;"></div>
+                                        <div class="unit-label">${remoteUnit.customName || 'Point'}</div>
+                                    </div>
+                                `,
+                                iconSize: [60, 80],
+                                iconAnchor: [30, 40]
+                            })
+                        }).addTo(map);
                         
+                        const newUnit = {
+                            id: remoteUnit.id,
+                            marker: pointMarker,
+                            position: remoteUnit.position,
+                            type: 'point',
+                            customName: remoteUnit.customName,
+                            isLocked: remoteUnit.isLocked || false
+                        };
+                        placedUnits.push(newUnit);
+                        updateUnitHierarchy();
+                    } else if (remoteUnit.type === 'text' && remoteUnit.position) {
+                        // Handle text markers
+                        const textMarker = L.marker([remoteUnit.position[0], remoteUnit.position[1]], {
+                            icon: L.divIcon({
+                                className: 'text-marker',
+                                html: `<div style="background: white; padding: 5px; border-radius: 3px; font-family: monospace;">${remoteUnit.customName || 'Text'}</div>`,
+                                iconSize: [200, 30],
+                                iconAnchor: [100, 15]
+                            })
+                        }).addTo(map);
+                        
+                        const newUnit = {
+                            id: remoteUnit.id,
+                            marker: textMarker,
+                            position: remoteUnit.position,
+                            type: 'text',
+                            customName: remoteUnit.customName
+                        };
+                        placedUnits.push(newUnit);
                         updateUnitHierarchy();
                     }
+                } finally {
+                    // Reset flag after creating unit
+                    isCreatingFromFirebase = false;
                 }
             });
             
@@ -3369,32 +3454,56 @@ document.addEventListener('DOMContentLoaded', function() {
                     localUnit.position = remoteUnit.position;
                     if (localUnit.boundingBox) {
                         localUnit.boundingBox.setBounds(
-                            L.latLng(remoteUnit.position[0], remoteUnit.position[1]).toBounds(localUnit.boundingBox._boxSize)
+                            L.latLng(remoteUnit.position[0], remoteUnit.position[1]).toBounds(localUnit.boundingBox._boxSize || 0.0012)
                         );
                     }
                 }
                 
+                // Update lock state
+                if (remoteUnit.isLocked !== undefined) {
+                    localUnit.isLocked = remoteUnit.isLocked;
+                    if (localUnit.marker) {
+                        if (remoteUnit.isLocked) {
+                            localUnit.marker.dragging.disable();
+                        } else {
+                            localUnit.marker.dragging.enable();
+                        }
+                    }
+                }
+                
                 // Update visual properties
-                const markerElement = localUnit.marker.getElement();
+                const markerElement = localUnit.marker ? localUnit.marker.getElement() : null;
                 if (markerElement) {
                     const container = markerElement.querySelector('.unit-container');
                     const img = markerElement.querySelector('img');
                     const label = markerElement.querySelector('.unit-label');
+                    const lockBtn = markerElement.querySelector('.unit-lock-btn');
                     
+                    // Update rotation
                     if (container && remoteUnit.rotation !== undefined) {
                         localUnit.rotation = remoteUnit.rotation;
                         container.style.transform = `rotate(${remoteUnit.rotation}deg)`;
                     }
                     
-                    if (img && remoteUnit.size) {
+                    // Update size
+                    if (img && remoteUnit.size !== undefined) {
                         localUnit.size = remoteUnit.size;
                         img.style.width = `${remoteUnit.size}px`;
                         img.style.height = `${remoteUnit.size}px`;
                     }
                     
-                    if (label && remoteUnit.customName) {
+                    // Update name
+                    if (label && remoteUnit.customName !== undefined) {
                         localUnit.customName = remoteUnit.customName;
-                        label.textContent = remoteUnit.customName;
+                        label.textContent = remoteUnit.customName || (localUnit.symbolKey ? symbolImages[localUnit.symbolKey]?.symbolName : 'Unit');
+                    }
+                    
+                    // Update lock button visual state
+                    if (lockBtn && remoteUnit.isLocked !== undefined) {
+                        lockBtn.style.color = remoteUnit.isLocked ? '#e74c3c' : '#666';
+                        if (container) {
+                            container.style.opacity = remoteUnit.isLocked ? '0.7' : '1';
+                        }
                     }
                 }
                 
