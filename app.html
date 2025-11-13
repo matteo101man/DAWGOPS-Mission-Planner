@@ -43,6 +43,29 @@
         flex-wrap: wrap;
         justify-content: center;
       }
+      /* Live location marker with pulsing animation */
+      .live-location-marker .pulse-ring {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 40px;
+        height: 40px;
+        border: 3px solid #4285F4;
+        border-radius: 50%;
+        animation: pulse 2s ease-out infinite;
+        opacity: 0;
+      }
+      @keyframes pulse {
+        0% {
+          transform: translate(-50%, -50%) scale(0.5);
+          opacity: 1;
+        }
+        100% {
+          transform: translate(-50%, -50%) scale(1.5);
+          opacity: 0;
+        }
+      }
       #app { display: grid; grid-template-columns: 280px 1fr; height: 100%; }
       #topbar { display: none; align-items: center; gap: 8px; padding: 10px; border-bottom: 1px solid #eee; }
       #sidebar { 

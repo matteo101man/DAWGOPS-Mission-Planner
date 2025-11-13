@@ -528,17 +528,23 @@ document.addEventListener('DOMContentLoaded', function() {
         let customName = null;
 
         // Create bounding box for selection indication and pinch-to-resize
-        const boundingBox = L.rectangle(unitMarker.getLatLng().toBounds(0.001), {
+        // Make it square and bigger than the unit (80x80 instead of 40x40)
+        const boxSize = 0.0008; // Larger bounding box in degrees
+        const boundingBox = L.rectangle(unitMarker.getLatLng().toBounds(boxSize), {
           color: '#000000',
-          fill: false,
-          weight: 3,
+          fillColor: '#000000',
+          fill: true,
+          fillOpacity: 0.05,
+          weight: 4,
           interactive: true,
           className: 'unit-bounding-box',
-          opacity: 1  // Always visible
+          opacity: 1,  // Always visible
+          pane: 'overlayPane' // Ensure it renders above the map
         }).addTo(map);
         boundingBox._unitMarker = unitMarker;
         boundingBox._unitContainer = container;
         boundingBox._unitImg = img;
+        boundingBox._boxSize = boxSize;
 
         // Two-finger rotation and pinch-to-resize state
         let isRotating = false;
@@ -651,10 +657,9 @@ document.addEventListener('DOMContentLoaded', function() {
           container.style.width = `${newSize + 20}px`;
           container.style.height = `${newSize + 40}px`;
           
-          // Update bounding box
+          // Update bounding box to stay square and larger
           const latlng = unitMarker.getLatLng();
-          const sizeInDegrees = (newSize / 111000) * 0.001;
-          boundingBox.setBounds(latlng.toBounds(sizeInDegrees));
+          boundingBox.setBounds(latlng.toBounds(boundingBox._boxSize));
         }, {passive: false});
 
         markerElement.addEventListener('touchend', function(e) {
@@ -676,9 +681,26 @@ document.addEventListener('DOMContentLoaded', function() {
         // Update bounding box when unit moves
         unitMarker.on('drag', function() {
           const latlng = unitMarker.getLatLng();
-          const size = parseInt(img.style.width) || 40;
-          const sizeInDegrees = (size / 111000) * 0.001;
-          boundingBox.setBounds(latlng.toBounds(sizeInDegrees));
+          boundingBox.setBounds(latlng.toBounds(boundingBox._boxSize));
+          // Update linked text marker if exists (keeping offset)
+          if (linkedTextMarker) {
+            const offsetLat = latlng.lat + 0.0002; // Maintain offset above unit
+            linkedTextMarker.setLatLng([offsetLat, latlng.lng]);
+            // Update text content with new coordinates
+            try {
+              if (window.mgrs) {
+                const mgrsRef = window.mgrs.forward([latlng.lng, latlng.lat]);
+                const formattedMgrs = formatMgrs(mgrsRef);
+                const markerElement = linkedTextMarker.getElement();
+                if (markerElement) {
+                  const textDiv = markerElement.querySelector('div');
+                  if (textDiv) textDiv.textContent = formattedMgrs;
+                }
+                const unit = placedUnits.find(u => u.marker === linkedTextMarker);
+                if (unit) unit.customName = `Position: ${formattedMgrs}`;
+              }
+            } catch(e) {}
+          }
         });
 
 
@@ -709,6 +731,14 @@ document.addEventListener('DOMContentLoaded', function() {
           e.preventDefault();
           const index = placedUnits.findIndex(u => u.marker === unitMarker);
           if (index !== -1) {
+            // Also delete linked text marker if it exists
+            if (linkedTextMarker) {
+              const textIndex = placedUnits.findIndex(u => u.marker === linkedTextMarker);
+              if (textIndex !== -1) {
+                map.removeLayer(linkedTextMarker);
+                placedUnits.splice(textIndex, 1);
+              }
+            }
             removeUnit(index);
           }
         }
@@ -773,7 +803,7 @@ document.addEventListener('DOMContentLoaded', function() {
         saveState();
         addContextMenuListeners(container);
 
-        // Copy position button (text marker follows parent unit)
+        // Copy position button (text marker follows parent unit and appears above label)
         let linkedTextMarker = null;
         function doCopy(e){
             e.stopPropagation();
@@ -783,12 +813,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (window.mgrs) {
                     const mgrsRef = window.mgrs.forward([latlngNow.lng, latlngNow.lat]);
                     const formattedMgrs = formatMgrs(mgrsRef);
-                    const textMarker = L.marker([latlngNow.lat, latlngNow.lng], {
+                    // Position text marker above the unit (offset by moving north)
+                    const offsetLat = latlngNow.lat + 0.0002; // Offset north
+                    const textMarker = L.marker([offsetLat, latlngNow.lng], {
                         icon: L.divIcon({
-                            className: 'text-marker',
-                            html: `<div style="background: white; padding: 5px; border-radius: 3px; font-family: monospace;">${formattedMgrs}</div>`,
-                            iconSize: [200, 30],
-                            iconAnchor: [100, 15]
+                            className: 'text-marker position-marker',
+                            html: `<div style="background: rgba(255,255,255,0.95); padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 10px; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.3); border: 1px solid #666;">${formattedMgrs}</div>`,
+                            iconSize: [200, 20],
+                            iconAnchor: [100, 25]
                         })
                     }).addTo(map);
                     linkedTextMarker = textMarker;
@@ -799,27 +831,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.error('Error converting to MGRS:', error);
             }
         }
-        // Update text marker position when parent unit is dragged
-        unitMarker.on('drag', function() {
-          if (linkedTextMarker) {
-            const latlng = unitMarker.getLatLng();
-            linkedTextMarker.setLatLng(latlng);
-            // Update text content with new coordinates
-            try {
-              if (window.mgrs) {
-                const mgrsRef = window.mgrs.forward([latlng.lng, latlng.lat]);
-                const formattedMgrs = formatMgrs(mgrsRef);
-                const markerElement = linkedTextMarker.getElement();
-                if (markerElement) {
-                  const textDiv = markerElement.querySelector('div');
-                  if (textDiv) textDiv.textContent = formattedMgrs;
-                }
-                const unit = placedUnits.find(u => u.marker === linkedTextMarker);
-                if (unit) unit.customName = `Position: ${formattedMgrs}`;
-              }
-            } catch(e) {}
-          }
-        });
         copyPositionBtn.addEventListener('click', doCopy);
         copyPositionBtn.addEventListener('touchstart', doCopy, {passive:false});
       }
@@ -3192,6 +3203,13 @@ document.addEventListener('DOMContentLoaded', function() {
         const yourLocationDisplay = document.getElementById('your-location-mgrs');
         const refreshLocationBtn = document.getElementById('refresh-location');
         let watchId = null;
+        let myLocationMarker = null;
+        
+        // Get device name for display
+        const deviceName = (navigator.userAgent.includes('iPhone') ? 'iPhone' : 
+                           navigator.userAgent.includes('iPad') ? 'iPad' :
+                           navigator.userAgent.includes('Android') ? 'Android' :
+                           'Device') + ' User';
         
         let followEnabled = ('ontouchstart' in window || navigator.maxTouchPoints > 0); // follow by default on touch devices
         // Disable follow if user manually drags the map
@@ -3209,6 +3227,30 @@ document.addEventListener('DOMContentLoaded', function() {
                     yourLocationDisplay.style.backgroundColor = '#d4edda'; // Light green for success
                     yourLocationDisplay.style.color = '#155724';
                 }
+                
+                // Create or update location marker on map
+                if (!myLocationMarker) {
+                    // Create new marker with pulsing blue dot
+                    myLocationMarker = L.marker([lat, lng], {
+                        icon: L.divIcon({
+                            className: 'live-location-marker',
+                            html: `
+                                <div style="position: relative; width: 40px; height: 40px;">
+                                    <div class="pulse-ring"></div>
+                                    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 16px; height: 16px; background: #4285F4; border: 3px solid white; border-radius: 50%; box-shadow: 0 2px 6px rgba(0,0,0,0.4); z-index: 2;"></div>
+                                </div>
+                                <div style="position: absolute; top: 45px; left: 50%; transform: translateX(-50%); background: rgba(66, 133, 244, 0.95); color: white; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">${deviceName}</div>
+                            `,
+                            iconSize: [40, 70],
+                            iconAnchor: [20, 20]
+                        }),
+                        zIndexOffset: 2000 // Keep it above other markers
+                    }).addTo(map);
+                } else {
+                    // Update existing marker position
+                    myLocationMarker.setLatLng([lat, lng]);
+                }
+                
                 // Auto-follow device location on map if enabled
                 if (followEnabled) {
                     const currentZoom = map.getZoom();
