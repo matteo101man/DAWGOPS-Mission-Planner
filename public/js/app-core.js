@@ -369,6 +369,8 @@ document.addEventListener('DOMContentLoaded', function() {
         unitItem.className = 'unit-item';
         unitItem.setAttribute('data-symbol-key', symbolKey);
         unitItem.draggable = true; // Make the item draggable
+        unitItem.setAttribute('role', 'button');
+        unitItem.setAttribute('aria-label', `Place ${img.symbolName} on map`);
         
         // Create the image element
         const imgElement = document.createElement('img');
@@ -404,7 +406,18 @@ document.addEventListener('DOMContentLoaded', function() {
       const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
       if (isTouch) {
         unitItems.forEach(item => {
-          item.addEventListener('click', function() {
+          // Use touchstart for immediate feedback on iOS
+          item.addEventListener('touchstart', function(e) {
+            e.preventDefault(); // Prevent scroll/drag
+            this.style.background = '#e8e8e8';
+            this.style.transform = 'scale(0.95)';
+          }, {passive: false});
+          
+          item.addEventListener('touchend', function(e) {
+            e.preventDefault();
+            this.style.background = '#fafafa';
+            this.style.transform = 'scale(1)';
+            
             const key = this.getAttribute('data-symbol-key');
             if (!key || !symbolImages[key]) return;
             const center = map.getCenter();
@@ -418,6 +431,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (overlay) overlay.style.display = 'none';
               }
             } catch(_){}
+          }, {passive: false});
+          
+          // Fallback for click (desktop)
+          item.addEventListener('click', function(e) {
+            if (isTouch) return; // Skip on touch devices
+            const key = this.getAttribute('data-symbol-key');
+            if (!key || !symbolImages[key]) return;
+            const center = map.getCenter();
+            createUnitFromSymbolAt(center, key);
           });
         });
       }
@@ -479,14 +501,31 @@ document.addEventListener('DOMContentLoaded', function() {
             return { x: t.clientX, y: t.clientY };
         }
 
-        // Style controls for larger touch targets
-        [rotateBtn, lockBtn, resizeBtn].forEach(function(btn){
-          if (btn) { btn.style.fontSize = '18px'; btn.style.padding = '6px'; btn.style.margin = '2px'; }
+        // Style controls for iOS-friendly touch targets (minimum 44x44px per Apple HIG)
+        const copyPositionBtn = markerElement.querySelector('.unit-copy-position-btn');
+        [rotateBtn, lockBtn, resizeBtn, copyPositionBtn].forEach(function(btn){
+          if (btn) { 
+            btn.style.fontSize = '20px'; 
+            btn.style.padding = '10px'; 
+            btn.style.margin = '3px'; 
+            btn.style.minWidth = '44px';
+            btn.style.minHeight = '44px';
+            btn.style.borderRadius = '6px';
+            btn.style.border = '1px solid rgba(0,0,0,0.2)';
+            btn.style.background = 'rgba(255,255,255,0.9)';
+            btn.style.transition = 'all 0.15s ease';
+            btn.style.touchAction = 'manipulation';
+            btn.style.webkitTapHighlightColor = 'transparent';
+            // Visual feedback on touch
+            btn.addEventListener('touchstart', function(){ this.style.background = 'rgba(240,240,240,0.95)'; this.style.transform = 'scale(0.95)'; }, {passive:true});
+            btn.addEventListener('touchend', function(){ this.style.background = 'rgba(255,255,255,0.9)'; this.style.transform = 'scale(1)'; }, {passive:true});
+          }
         });
 
         // Pointer (mouse + touch) rotation
         function startRotate(ev){
-            e.stopPropagation();
+            ev.stopPropagation();
+            ev.preventDefault();
             if (!isLocked) {
                 isRotating = true;
                 wasRotating = false; // Reset the flag
@@ -559,6 +598,7 @@ document.addEventListener('DOMContentLoaded', function() {
         let startSize = 40;
         function startResize(e){
           e.stopPropagation();
+          e.preventDefault();
           if (!isLocked) {
             isResizing = true;
             startSize = parseInt(img.style.width);
@@ -600,6 +640,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Lock functionality
         function toggleLock(e){
           e.stopPropagation();
+          e.preventDefault();
           isLocked = !isLocked;
           lockBtn.style.color = isLocked ? '#e74c3c' : '#666';
           container.style.opacity = isLocked ? '0.7' : '1';
@@ -683,9 +724,9 @@ document.addEventListener('DOMContentLoaded', function() {
         addContextMenuListeners(container);
 
         // Copy position button
-        const copyPositionBtn = markerElement.querySelector('.unit-copy-position-btn');
         function doCopy(e){
             e.stopPropagation();
+            e.preventDefault();
             const latlngNow = unitMarker.getLatLng();
             try {
                 if (window.mgrs) {
