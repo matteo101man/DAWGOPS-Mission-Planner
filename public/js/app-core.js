@@ -106,6 +106,148 @@ document.addEventListener('DOMContentLoaded', function() {
 
     terrainControl.addTo(map);
 
+    // Mode state variables
+    let unitPlacementMode = false;
+    let multiSelectMode = false;
+
+    // Function to update map interaction based on modes
+    function updateMapInteraction() {
+        if (unitPlacementMode || multiSelectMode) {
+            // Disable map dragging and zooming
+            map.dragging.disable();
+            map.touchZoom.disable();
+            map.doubleClickZoom.disable();
+            map.scrollWheelZoom.disable();
+            map.boxZoom.disable();
+            map.keyboard.disable();
+            if (map.tap) map.tap.disable();
+        } else {
+            // Re-enable map interactions
+            map.dragging.enable();
+            map.touchZoom.enable();
+            map.doubleClickZoom.enable();
+            map.scrollWheelZoom.enable();
+            map.boxZoom.enable();
+            map.keyboard.enable();
+            if (map.tap) map.tap.enable();
+        }
+        
+        // Update all units' dragging state based on multi-select mode
+        updateUnitsDraggingState();
+    }
+    
+    // Function to update dragging state for all units
+    function updateUnitsDraggingState() {
+        placedUnits.forEach(unit => {
+            if (unit.marker && unit.marker.dragging) {
+                if (multiSelectMode) {
+                    // Disable dragging in multi-select mode
+                    unit.marker.dragging.disable();
+                } else {
+                    // Re-enable dragging if unit is not locked
+                    if (!unit.isLocked) {
+                        unit.marker.dragging.enable();
+                    }
+                }
+            }
+        });
+    }
+
+    // Unit Placement Mode Toggle Control
+    const placementModeControl = L.control({position: 'topright'});
+    placementModeControl.onAdd = function(map) {
+        const div = L.DomUtil.create('div', 'leaflet-control leaflet-bar');
+        div.style.marginTop = '10px';
+        div.innerHTML = `
+            <div style="padding: 8px; background: white; border-radius: 4px; box-shadow: 0 1px 5px rgba(0,0,0,0.4);">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; user-select: none;">
+                    <input type="checkbox" id="placement-mode-toggle" style="width: 18px; height: 18px; cursor: pointer;">
+                    <span>Unit Placement Mode</span>
+                </label>
+            </div>
+        `;
+        
+        const checkbox = div.querySelector('#placement-mode-toggle');
+        checkbox.addEventListener('change', function() {
+            unitPlacementMode = this.checked;
+            updateMapInteraction();
+            // Disable multi-select if placement mode is enabled
+            if (unitPlacementMode && multiSelectMode) {
+                const multiSelectCheckbox = document.getElementById('multiselect-mode-toggle');
+                if (multiSelectCheckbox) {
+                    multiSelectCheckbox.checked = false;
+                    multiSelectMode = false;
+                    // Clear selections when exiting multi-select mode
+                    selectedUnits.forEach(unit => {
+                        if (unit && unit.getElement) {
+                            unit.getElement().classList.remove('selected');
+                        }
+                    });
+                    selectedUnits = [];
+                    selectedUnit = null;
+                    if (measureDistanceBtn) {
+                        measureDistanceBtn.style.display = 'none';
+                    }
+                    updateUnitHierarchy();
+                }
+            }
+        });
+        
+        return div;
+    };
+    placementModeControl.addTo(map);
+
+    // Multi-Select Mode Toggle Control
+    const multiSelectControl = L.control({position: 'topright'});
+    multiSelectControl.onAdd = function(map) {
+        const div = L.DomUtil.create('div', 'leaflet-control leaflet-bar');
+        div.style.marginTop = '10px';
+        div.innerHTML = `
+            <div style="padding: 8px; background: white; border-radius: 4px; box-shadow: 0 1px 5px rgba(0,0,0,0.4);">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; user-select: none;">
+                    <input type="checkbox" id="multiselect-mode-toggle" style="width: 18px; height: 18px; cursor: pointer;">
+                    <span>Multi-Select</span>
+                </label>
+            </div>
+        `;
+        
+        const checkbox = div.querySelector('#multiselect-mode-toggle');
+        checkbox.addEventListener('change', function() {
+            multiSelectMode = this.checked;
+            updateMapInteraction();
+            // Disable placement mode if multi-select is enabled
+            if (multiSelectMode && unitPlacementMode) {
+                const placementCheckbox = document.getElementById('placement-mode-toggle');
+                if (placementCheckbox) {
+                    placementCheckbox.checked = false;
+                    unitPlacementMode = false;
+                }
+            }
+            // Clear selections when exiting multi-select mode
+            if (!multiSelectMode) {
+                selectedUnits.forEach(unit => {
+                    if (unit && unit.getElement) {
+                        unit.getElement().classList.remove('selected');
+                    }
+                });
+                selectedUnits = [];
+                selectedUnit = null;
+                if (measureDistanceBtn) {
+                    measureDistanceBtn.style.display = 'none';
+                }
+                updateUnitHierarchy();
+            } else {
+                // When entering multi-select mode, update measure distance button visibility
+                if (measureDistanceBtn) {
+                    measureDistanceBtn.style.display = (selectedUnits.length === 2) ? 'block' : 'none';
+                }
+            }
+        });
+        
+        return div;
+    };
+    multiSelectControl.addTo(map);
+
     // Grid configuration for 1:25,000 scale (1km grid cells)
     const gridConfig = {
       cellSize: 1000, // 1km grid cells for 1:25,000 scale
@@ -514,8 +656,13 @@ document.addEventListener('DOMContentLoaded', function() {
           })
         }).addTo(map);
 
-        // Make marker draggable
+        // Make marker draggable (but will be disabled in multi-select mode)
         unitMarker.dragging.enable();
+        
+        // Disable dragging in multi-select mode
+        if (multiSelectMode) {
+            unitMarker.dragging.disable();
+        }
 
         // Add rotation and lock functionality
         const markerElement = unitMarker.getElement();
@@ -559,7 +706,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Single-finger drag on bounding box
         if (boxElement) {
           boxElement.addEventListener('touchstart', function(e) {
-            if (isLocked || e.touches.length > 1) return;
+            if (isLocked || e.touches.length > 1 || multiSelectMode) return; // Disable drag in multi-select mode
             isDraggingBox = true;
             dragStartLatLng = unitMarker.getLatLng();
             e.stopPropagation();
@@ -600,15 +747,20 @@ document.addEventListener('DOMContentLoaded', function() {
           boxElement.addEventListener('touchend', function(e) {
             if (isDraggingBox) {
               isDraggingBox = false;
-              const unit = placedUnits.find(u => u.marker === unitMarker);
-              if (unit) {
-                unit.position = [unitMarker.getLatLng().lat, unitMarker.getLatLng().lng];
-                updateUnitHierarchy();
-                saveState();
-                syncUnitToFirebase(unit); // Sync position update
+              // Only sync if not in multi-select mode
+              if (!multiSelectMode) {
+                const unit = placedUnits.find(u => u.marker === unitMarker);
+                if (unit) {
+                  unit.position = [unitMarker.getLatLng().lat, unitMarker.getLatLng().lng];
+                  updateUnitHierarchy();
+                  saveState();
+                  syncUnitToFirebase(unit); // Sync position update
+                }
               }
-              // Re-enable map dragging
-              map.dragging.enable();
+              // Re-enable map dragging only if modes allow it
+              if (!unitPlacementMode && !multiSelectMode) {
+                map.dragging.enable();
+              }
             }
           }, {passive: false});
         }
@@ -657,12 +809,16 @@ document.addEventListener('DOMContentLoaded', function() {
           }
         });
         
-        // Toggle context menu on tap
+        // Toggle context menu on tap (disabled in multi-select mode)
         let menuVisible = false;
         container.addEventListener('click', function(e) {
           // Don't toggle if clicking a button
           if (e.target.tagName === 'BUTTON') return;
           e.stopPropagation();
+          // In multi-select mode, don't show context menu, just select
+          if (multiSelectMode) {
+            return; // Selection handled below
+          }
           menuVisible = !menuVisible;
           controlsDiv.style.display = menuVisible ? 'flex' : 'none';
         });
@@ -685,7 +841,7 @@ document.addEventListener('DOMContentLoaded', function() {
         gestureElements.forEach(element => {
           if (!element) return;
           element.addEventListener('touchstart', function(e) {
-            if (isLocked) return;
+            if (isLocked || multiSelectMode) return; // Disable gestures in multi-select mode
             if (e.touches.length === 2) {
               e.preventDefault();
               e.stopPropagation();
@@ -789,7 +945,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Sync position when drag ends (for standard Leaflet drag, not touch drag)
         unitMarker.on('dragend', function() {
-          if (isLocked) return;
+          if (isLocked || multiSelectMode) return; // Don't sync if in multi-select mode
           const unit = placedUnits.find(u => u.marker === unitMarker);
           if (unit) {
             unit.position = [unitMarker.getLatLng().lat, unitMarker.getLatLng().lng];
@@ -1097,38 +1253,74 @@ document.addEventListener('DOMContentLoaded', function() {
           listItem.onclick = function(e) {
             e = e || window.event; // For IE compatibility
             
-            if (e.ctrlKey) {
-              // Ctrl + click for multiple selection
-              if (selectedUnit === unit.marker) {
-                // Deselect if clicking the same unit
-                selectedUnit.getElement().classList.remove('selected');
-                selectedUnit = null;
+            // Multi-select mode: max 2 units
+            if (multiSelectMode) {
+              if (selectedUnits.includes(unit.marker)) {
+                // Deselect if already selected
+                unit.marker.getElement().classList.remove('selected');
                 selectedUnits = selectedUnits.filter(u => u !== unit.marker);
+                if (selectedUnit === unit.marker) {
+                  selectedUnit = selectedUnits.length > 0 ? selectedUnits[0] : null;
+                }
               } else {
-                // Add to selection
-                if (!selectedUnits.includes(unit.marker)) {
+                // Add to selection (max 2)
+                if (selectedUnits.length < 2) {
                   selectedUnits.push(unit.marker);
                   unit.marker.getElement().classList.add('selected');
+                  selectedUnit = unit.marker;
+                } else {
+                  // Replace first selection if already at max
+                  if (selectedUnits[0]) {
+                    selectedUnits[0].getElement().classList.remove('selected');
+                  }
+                  selectedUnits[0] = selectedUnits[1];
+                  selectedUnits[1] = unit.marker;
+                  unit.marker.getElement().classList.add('selected');
+                  selectedUnit = unit.marker;
                 }
+              }
+              
+              // Show measure distance button only in multi-select mode when 2 units selected
+              if (measureDistanceBtn) {
+                measureDistanceBtn.style.display = (multiSelectMode && selectedUnits.length === 2) ? 'block' : 'none';
               }
             } else {
-              // Regular click for single selection
-              if (selectedUnit === unit.marker) {
-                selectedUnit.getElement().classList.remove('selected');
-                selectedUnit = null;
-                selectedUnits = [];
-              } else {
-                if (selectedUnit) {
+              // Normal mode: single selection
+              if (e.ctrlKey) {
+                // Ctrl + click for multiple selection (normal mode)
+                if (selectedUnit === unit.marker) {
+                  // Deselect if clicking the same unit
                   selectedUnit.getElement().classList.remove('selected');
+                  selectedUnit = null;
+                  selectedUnits = selectedUnits.filter(u => u !== unit.marker);
+                } else {
+                  // Add to selection
+                  if (!selectedUnits.includes(unit.marker)) {
+                    selectedUnits.push(unit.marker);
+                    unit.marker.getElement().classList.add('selected');
+                  }
                 }
-                unit.marker.getElement().classList.add('selected');
-                selectedUnit = unit.marker;
-                selectedUnits = [unit.marker];
+              } else {
+                // Regular click for single selection
+                if (selectedUnit === unit.marker) {
+                  selectedUnit.getElement().classList.remove('selected');
+                  selectedUnit = null;
+                  selectedUnits = [];
+                } else {
+                  if (selectedUnit) {
+                    selectedUnit.getElement().classList.remove('selected');
+                  }
+                  unit.marker.getElement().classList.add('selected');
+                  selectedUnit = unit.marker;
+                  selectedUnits = [unit.marker];
+                }
+              }
+              
+              // Hide measure distance button in normal mode
+              if (measureDistanceBtn) {
+                measureDistanceBtn.style.display = 'none';
               }
             }
-
-            // Show/hide measure distance button
-            measureDistanceBtn.style.display = selectedUnits.length === 2 ? 'block' : 'none';
 
             updateUnitHierarchy();
           };
@@ -3543,42 +3735,83 @@ document.addEventListener('DOMContentLoaded', function() {
         const container = markerElement.querySelector('.unit-container');
         if (!container) return;
         
+        // Disable dragging in multi-select mode
+        if (multiSelectMode && marker.dragging) {
+            marker.dragging.disable();
+        }
+        
         // Click handler for selection
         container.addEventListener('click', function(e) {
             e.stopPropagation();
             
-            if (e.ctrlKey) {
-                // Ctrl + click for multiple selection
+            // Multi-select mode: max 2 units
+            if (multiSelectMode) {
+              if (selectedUnits.includes(marker)) {
+                // Deselect if already selected
+                marker.getElement().classList.remove('selected');
+                selectedUnits = selectedUnits.filter(u => u !== marker);
                 if (selectedUnit === marker) {
-                    // Deselect if clicking the same unit
-                    selectedUnit.getElement().classList.remove('selected');
-                    selectedUnit = null;
-                    selectedUnits = selectedUnits.filter(u => u !== marker);
-                } else {
-                    // Add to selection
-                    if (!selectedUnits.includes(marker)) {
-                        selectedUnits.push(marker);
-                        marker.getElement().classList.add('selected');
-                    }
+                  selectedUnit = selectedUnits.length > 0 ? selectedUnits[0] : null;
                 }
+              } else {
+                // Add to selection (max 2)
+                if (selectedUnits.length < 2) {
+                  selectedUnits.push(marker);
+                  marker.getElement().classList.add('selected');
+                  selectedUnit = marker;
+                } else {
+                  // Replace first selection if already at max
+                  if (selectedUnits[0]) {
+                    selectedUnits[0].getElement().classList.remove('selected');
+                  }
+                  selectedUnits[0] = selectedUnits[1];
+                  selectedUnits[1] = marker;
+                  marker.getElement().classList.add('selected');
+                  selectedUnit = marker;
+                }
+              }
+              
+              // Show measure distance button only in multi-select mode when 2 units selected
+              if (measureDistanceBtn) {
+                measureDistanceBtn.style.display = (multiSelectMode && selectedUnits.length === 2) ? 'block' : 'none';
+              }
             } else {
+              // Normal mode: single selection
+              if (e.ctrlKey) {
+                // Ctrl + click for multiple selection (normal mode)
+                if (selectedUnit === marker) {
+                  // Deselect if clicking the same unit
+                  selectedUnit.getElement().classList.remove('selected');
+                  selectedUnit = null;
+                  selectedUnits = selectedUnits.filter(u => u !== marker);
+                } else {
+                  // Add to selection
+                  if (!selectedUnits.includes(marker)) {
+                    selectedUnits.push(marker);
+                    marker.getElement().classList.add('selected');
+                  }
+                }
+              } else {
                 // Regular click for single selection
                 if (selectedUnit === marker) {
-                    selectedUnit.getElement().classList.remove('selected');
-                    selectedUnit = null;
-                    selectedUnits = [];
+                  selectedUnit.getElement().classList.remove('selected');
+                  selectedUnit = null;
+                  selectedUnits = [];
                 } else {
-                    if (selectedUnit) {
-                        selectedUnit.getElement().classList.remove('selected');
-                    }
-                    marker.getElement().classList.add('selected');
-                    selectedUnit = marker;
-                    selectedUnits = [marker];
+                  if (selectedUnit) {
+                    selectedUnit.getElement().classList.remove('selected');
+                  }
+                  marker.getElement().classList.add('selected');
+                  selectedUnit = marker;
+                  selectedUnits = [marker];
                 }
+              }
+              
+              // Hide measure distance button in normal mode
+              if (measureDistanceBtn) {
+                measureDistanceBtn.style.display = 'none';
+              }
             }
-
-            // Show/hide measure distance button
-            measureDistanceBtn.style.display = selectedUnits.length === 2 ? 'block' : 'none';
 
             updateUnitHierarchy();
 
