@@ -1615,11 +1615,45 @@ document.addEventListener('DOMContentLoaded', function() {
         const point2 = selectedUnits[1].getLatLng();
         const { distance, azimuth } = calculateDistanceAndAzimuth(point1, point2);
 
-        // Create a polyline for the line with arrow
+        // Calculate midpoint and position for text (below the line, between units)
+        const midPoint = L.latLng(
+            (point1.lat + point2.lat) / 2,
+            (point1.lng + point2.lng) / 2
+        );
+        
+        // Position text marker below the midpoint (south of the line)
+        // Calculate offset to position it below the line
+        const latOffset = -0.0003; // Move south (negative = south)
+        const textPosition = L.latLng(midPoint.lat + latOffset, midPoint.lng);
+
+        // Create text marker first (lower z-index, appears below line/arrow)
+        const textMarker = L.marker(textPosition, {
+            icon: L.divIcon({
+                className: 'distance-text',
+                html: `<div style="
+                    background: rgba(255, 255, 255, 0.85);
+                    padding: 4px 8px;
+                    border-radius: 4px;
+                    font-weight: bold;
+                    text-align: center;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                    border: 1px solid rgba(0,0,0,0.1);
+                ">
+                    ${Math.round(distance)}m<br>
+                    ${Math.round(azimuth)}°
+                </div>`,
+                iconSize: [100, 40],
+                iconAnchor: [50, 20]
+            }),
+            zIndexOffset: 100 // Lower z-index, appears below line
+        }).addTo(map);
+
+        // Create a polyline for the line with arrow (higher z-index, appears above text)
         const line = L.polyline([point1, point2], {
             color: '#000',
             weight: 2,
-            opacity: 0.8
+            opacity: 0.8,
+            pane: 'overlayPane' // Ensure it's on overlay pane
         }).addTo(map);
         
         // Add arrow marker at the end (point2) to show direction from point1 to point2
@@ -1640,25 +1674,8 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         
         const arrowMarker = L.marker(point2, {
-            icon: arrowIcon
-        }).addTo(map);
-
-        // Create a marker for the distance and azimuth text
-        const midPoint = L.latLng(
-            (point1.lat + point2.lat) / 2,
-            (point1.lng + point2.lng) / 2
-        );
-
-        const textMarker = L.marker(midPoint, {
-            icon: L.divIcon({
-                className: 'distance-text',
-                html: `<div style="background: white; padding: 2px 4px; border-radius: 2px; font-weight: bold; text-shadow: 1px 1px 2px rgba(255,255,255,0.8);">
-                    ${Math.round(distance)}m<br>
-                    ${Math.round(azimuth)}°
-                </div>`,
-                iconSize: [100, 40],
-                iconAnchor: [50, 20]
-            })
+            icon: arrowIcon,
+            zIndexOffset: 200 // Higher z-index, appears above text and line
         }).addTo(map);
 
         // Add to placed units for hierarchy
@@ -3887,9 +3904,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 
                 // Auto-pan to location on first load (once)
+                // Use setTimeout for iOS to ensure location is ready and map is fully initialized
                 if (!hasPannedToLocation) {
                     hasPannedToLocation = true;
-                    map.setView([lat, lng], 15, { animate: true });
+                    // Use longer delay for iOS to ensure everything is ready
+                    const delay = ('ontouchstart' in window || navigator.maxTouchPoints > 0) ? 500 : 100;
+                    setTimeout(() => {
+                        try {
+                            map.setView([lat, lng], 15, { animate: false }); // animate: false works better on iOS
+                        } catch (e) {
+                            console.error('Error panning to location:', e);
+                        }
+                    }, delay);
                 }
             } catch (error) {
                 console.error('Error converting GPS to MGRS:', error);

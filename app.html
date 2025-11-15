@@ -14,12 +14,24 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <style>
-      html, body { height: 100%; margin: 0; }
+      html, body { 
+        height: 100%; 
+        margin: 0; 
+        overflow: hidden; /* Disable scrolling */
+        position: fixed;
+        width: 100%;
+      }
       /* Disable selection on iOS to avoid accidental highlights */
       html, body, #app { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
       /* Prevent pinch-to-zoom on the webpage itself (iOS) */
       html, body { touch-action: pan-x pan-y; -ms-touch-action: pan-x pan-y; }
-      #app { touch-action: pan-x pan-y; }
+      #app { 
+        touch-action: pan-x pan-y; 
+        height: 100%;
+        overflow: hidden;
+        position: fixed;
+        width: 100%;
+      }
       /* Allow selection inside editable text markers */
       .text-marker, .text-marker * { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
       /* Unit marker styling */
@@ -431,6 +443,40 @@
         document.addEventListener('gestureend', function(e) {
           e.preventDefault();
         });
+        
+        // Prevent scrolling on the webpage
+        document.addEventListener('touchmove', function(e) {
+          // Allow scrolling only inside the sidebar and map
+          var target = e.target;
+          var sidebar = document.getElementById('sidebar');
+          var mapContainer = document.getElementById('tactical-map');
+          
+          // Check if touch is inside sidebar or map (which handle their own scrolling)
+          if (sidebar && sidebar.contains(target)) {
+            return; // Allow sidebar scrolling
+          }
+          if (mapContainer && mapContainer.contains(target)) {
+            return; // Allow map panning
+          }
+          
+          // Prevent all other scrolling
+          e.preventDefault();
+        }, {passive: false});
+        
+        // Prevent wheel scrolling
+        document.addEventListener('wheel', function(e) {
+          var target = e.target;
+          var sidebar = document.getElementById('sidebar');
+          var mapContainer = document.getElementById('tactical-map');
+          
+          // Allow scrolling only inside sidebar
+          if (sidebar && sidebar.contains(target)) {
+            return; // Allow sidebar scrolling
+          }
+          
+          // Prevent all other scrolling
+          e.preventDefault();
+        }, {passive: false});
         
         // Swipe gestures
         var startX=0, startY=0, tracking=false;
