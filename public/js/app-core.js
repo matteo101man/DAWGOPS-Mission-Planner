@@ -171,60 +171,9 @@ document.addEventListener('DOMContentLoaded', function() {
         checkbox.addEventListener('change', function() {
             unitPlacementMode = this.checked;
             updateMapInteraction();
-            // Disable multi-select if placement mode is enabled
+            // Clear multi-select when entering placement mode
             if (unitPlacementMode && multiSelectMode) {
-                const multiSelectCheckbox = document.getElementById('multiselect-mode-toggle');
-                if (multiSelectCheckbox) {
-                    multiSelectCheckbox.checked = false;
-                    multiSelectMode = false;
-                    // Clear selections when exiting multi-select mode
-                    selectedUnits.forEach(unit => {
-                        if (unit && unit.getElement) {
-                            unit.getElement().classList.remove('selected', 'selected-multiselect');
-                        }
-                    });
-                    selectedUnits = [];
-                    selectedUnit = null;
-                    if (measureDistanceBtn) {
-                        measureDistanceBtn.style.display = 'none';
-                    }
-                    updateUnitHierarchy();
-                }
-            }
-        });
-        
-        return div;
-    };
-    placementModeControl.addTo(map);
-
-    // Multi-Select Mode Toggle Control
-    const multiSelectControl = L.control({position: 'topright'});
-    multiSelectControl.onAdd = function(map) {
-        const div = L.DomUtil.create('div', 'leaflet-control leaflet-bar');
-        div.style.marginTop = '10px';
-        div.innerHTML = `
-            <div style="padding: 8px; background: white; border-radius: 4px; box-shadow: 0 1px 5px rgba(0,0,0,0.4);">
-                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; user-select: none;">
-                    <input type="checkbox" id="multiselect-mode-toggle" style="width: 18px; height: 18px; cursor: pointer;">
-                    <span>Multi-Select</span>
-                </label>
-            </div>
-        `;
-        
-        const checkbox = div.querySelector('#multiselect-mode-toggle');
-        checkbox.addEventListener('change', function() {
-            multiSelectMode = this.checked;
-            updateMapInteraction();
-            // Disable placement mode if multi-select is enabled
-            if (multiSelectMode && unitPlacementMode) {
-                const placementCheckbox = document.getElementById('placement-mode-toggle');
-                if (placementCheckbox) {
-                    placementCheckbox.checked = false;
-                    unitPlacementMode = false;
-                }
-            }
-            // Clear selections when exiting multi-select mode
-            if (!multiSelectMode) {
+                multiSelectMode = false;
                 selectedUnits.forEach(unit => {
                     if (unit && unit.getElement) {
                         unit.getElement().classList.remove('selected', 'selected-multiselect');
@@ -236,25 +185,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     measureDistanceBtn.style.display = 'none';
                 }
                 updateUnitHierarchy();
-            } else {
-                // When entering multi-select mode, update measure distance button visibility
-                if (measureDistanceBtn) {
-                    measureDistanceBtn.style.display = (selectedUnits.length === 2) ? 'block' : 'none';
-                }
-                // Add selected-multiselect class to already selected units
-                selectedUnits.forEach(unit => {
-                    if (unit && unit.getElement) {
-                        unit.getElement().classList.add('selected-multiselect');
-                    }
-                });
-                // Refresh hierarchy to hide/show rename buttons
-                updateUnitHierarchy();
             }
         });
         
         return div;
     };
-    multiSelectControl.addTo(map);
+    placementModeControl.addTo(map);
+
+    // Multi-select mode is now only accessible through hierarchy selection
+    // No toggle control needed
 
     // Grid configuration for 1:25,000 scale (1km grid cells)
     const gridConfig = {
@@ -778,9 +717,9 @@ document.addEventListener('DOMContentLoaded', function() {
           L.DomEvent.stopPropagation(e);
         });
         
-        // Add click handler to bounding box for selection in placement/multi-select modes
+        // Add click handler to bounding box for selection in placement mode only
         boundingBox.on('click', function(e) {
-          if (unitPlacementMode || multiSelectMode) {
+          if (unitPlacementMode) {
             e.originalEvent.stopPropagation();
             // Trigger selection on the unit marker
             if (container) {
@@ -792,7 +731,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Add touch handler for selection on bounding box
         if (boxElement) {
           boxElement.addEventListener('click', function(e) {
-            if (unitPlacementMode || multiSelectMode) {
+            if (unitPlacementMode) {
               e.stopPropagation();
               // Trigger selection on the unit marker
               if (container) {
@@ -1036,11 +975,11 @@ document.addEventListener('DOMContentLoaded', function() {
         deleteBtn.addEventListener('touchstart', deleteUnit, {passive:false});
 
 
-        // Double-tap to rename (iOS compatible) - disabled in multi-select mode
+        // Double-tap to rename (iOS compatible) - disabled in multi-select mode and unit placement mode
         let lastTap = 0;
         container.addEventListener('touchend', function(e) {
-          // Don't allow rename in multi-select mode
-          if (multiSelectMode) return;
+          // Don't allow rename in multi-select mode or unit placement mode
+          if (multiSelectMode || unitPlacementMode) return;
           
           const currentTime = new Date().getTime();
           const tapLength = currentTime - lastTap;
@@ -1062,11 +1001,11 @@ document.addEventListener('DOMContentLoaded', function() {
           lastTap = currentTime;
         });
         
-        // Double-click to rename (desktop) - disabled in multi-select mode
+        // Double-click to rename (desktop) - disabled in multi-select mode and unit placement mode
         container.addEventListener('dblclick', function(e) {
           e.stopPropagation();
-          // Don't allow rename in multi-select mode
-          if (multiSelectMode || isLocked) return;
+          // Don't allow rename in multi-select mode, unit placement mode, or if locked
+          if (multiSelectMode || unitPlacementMode || isLocked) return;
           
           const currentName = customName || symbolImages[symbolKey].symbolName;
           const newName = prompt('Enter new name:', currentName);
@@ -1237,9 +1176,9 @@ document.addEventListener('DOMContentLoaded', function() {
         const actions = document.createElement('div');
         actions.className = 'hierarchy-actions';
 
-        // Only add rename and lock buttons for non-distance items (hide rename in multi-select mode)
+        // Only add rename and lock buttons for non-distance items (hide rename in multi-select mode and unit placement mode)
         if (unit.type !== 'distance') {
-          if (!multiSelectMode) {
+          if (!multiSelectMode && !unitPlacementMode) {
             const renameBtn = document.createElement('button');
             renameBtn.className = 'hierarchy-rename-btn';
             renameBtn.innerHTML = '✎';
@@ -1295,8 +1234,10 @@ document.addEventListener('DOMContentLoaded', function() {
           listItem.onclick = function(e) {
             e = e || window.event; // For IE compatibility
             
-            // Multi-select mode: simple tap to select/deselect (max 2 units)
-            if (multiSelectMode) {
+            // Multi-select through hierarchy: simple tap to select/deselect (max 2 units)
+            // Enable multi-select mode when selecting from hierarchy
+            if (selectedUnits.length > 0 || selectedUnit) {
+              // Already have a selection, so we're in multi-select mode
               if (selectedUnits.includes(unit.marker)) {
                 // Deselect if already selected
                 unit.marker.getElement().classList.remove('selected', 'selected-multiselect');
@@ -1304,9 +1245,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (selectedUnit === unit.marker) {
                   selectedUnit = selectedUnits.length > 0 ? selectedUnits[0] : null;
                 }
+                // Exit multi-select mode if no units selected
+                if (selectedUnits.length === 0) {
+                  multiSelectMode = false;
+                  updateMapInteraction();
+                }
               } else {
                 // Add to selection only if under max (2 units)
                 if (selectedUnits.length < 2) {
+                  multiSelectMode = true;
+                  updateMapInteraction();
                   selectedUnits.push(unit.marker);
                   unit.marker.getElement().classList.add('selected', 'selected-multiselect');
                   selectedUnit = unit.marker;
@@ -1314,7 +1262,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 // If already at max, do nothing (don't replace)
               }
               
-              // Show measure distance button only in multi-select mode when 2 units selected
+              // Show measure distance button when 2 units selected
               if (measureDistanceBtn) {
                 measureDistanceBtn.style.display = (selectedUnits.length === 2) ? 'block' : 'none';
               }
@@ -1379,6 +1327,9 @@ document.addEventListener('DOMContentLoaded', function() {
         if (unit.type === 'distance') {
           map.removeLayer(unit.marker);
           map.removeLayer(unit.textMarker);
+          if (unit.arrowMarker) {
+            map.removeLayer(unit.arrowMarker);
+          }
         } else {
           map.removeLayer(unit.marker);
           if (unit.boundingBox) {
@@ -1664,12 +1615,32 @@ document.addEventListener('DOMContentLoaded', function() {
         const point2 = selectedUnits[1].getLatLng();
         const { distance, azimuth } = calculateDistanceAndAzimuth(point1, point2);
 
-        // Create a polyline for the dotted line
+        // Create a polyline for the line with arrow
         const line = L.polyline([point1, point2], {
             color: '#000',
             weight: 2,
-            dashArray: '5, 5',
             opacity: 0.8
+        }).addTo(map);
+        
+        // Add arrow marker at the end (point2) to show direction from point1 to point2
+        // Calculate bearing from point1 to point2 for arrow direction
+        const arrowIcon = L.divIcon({
+            className: 'distance-arrow',
+            html: `<div style="
+                width: 0;
+                height: 0;
+                border-left: 8px solid transparent;
+                border-right: 8px solid transparent;
+                border-top: 12px solid #000;
+                transform: rotate(${azimuth}deg);
+                transform-origin: center;
+            "></div>`,
+            iconSize: [16, 16],
+            iconAnchor: [8, 8]
+        });
+        
+        const arrowMarker = L.marker(point2, {
+            icon: arrowIcon
         }).addTo(map);
 
         // Create a marker for the distance and azimuth text
@@ -1693,6 +1664,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Add to placed units for hierarchy
         placedUnits.push({
             marker: line,
+            arrowMarker: arrowMarker,
             textMarker: textMarker,
             type: 'distance',
             distance: distance,
@@ -3778,29 +3750,10 @@ document.addEventListener('DOMContentLoaded', function() {
         container.addEventListener('click', function(e) {
             e.stopPropagation();
             
-            // Multi-select mode: simple tap to select/deselect (max 2 units)
-            if (multiSelectMode) {
-              if (selectedUnits.includes(marker)) {
-                // Deselect if already selected
-                marker.getElement().classList.remove('selected', 'selected-multiselect');
-                selectedUnits = selectedUnits.filter(u => u !== marker);
-                if (selectedUnit === marker) {
-                  selectedUnit = selectedUnits.length > 0 ? selectedUnits[0] : null;
-                }
-              } else {
-                // Add to selection only if under max (2 units)
-                if (selectedUnits.length < 2) {
-                  selectedUnits.push(marker);
-                  marker.getElement().classList.add('selected', 'selected-multiselect');
-                  selectedUnit = marker;
-                }
-                // If already at max, do nothing (don't replace)
-              }
-              
-              // Show measure distance button only in multi-select mode when 2 units selected
-              if (measureDistanceBtn) {
-                measureDistanceBtn.style.display = (selectedUnits.length === 2) ? 'block' : 'none';
-              }
+            // Multi-select mode only works from hierarchy, not from map clicks
+            // Map clicks just do normal single selection
+            if (false) { // Disabled - multi-select only from hierarchy
+              // This block is intentionally disabled
             } else {
               // Normal mode: single selection
               if (e.ctrlKey) {
