@@ -1164,6 +1164,7 @@ document.addEventListener('DOMContentLoaded', function() {
           pointIcon.style.width = '20px';
           pointIcon.style.height = '20px';
           pointIcon.style.backgroundColor = 'black';
+          pointIcon.style.opacity = '0.3';
           pointIcon.style.display = 'inline-block';
           unitDiv.appendChild(pointIcon);
 
@@ -1285,16 +1286,20 @@ document.addEventListener('DOMContentLoaded', function() {
               } else {
                 // Regular click for single selection
                 if (selectedUnit === unit.marker) {
-                  selectedUnit.getElement().classList.remove('selected');
+                  selectedUnit.getElement().classList.remove('selected', 'selected-multiselect');
                   selectedUnit = null;
                   selectedUnits = [];
+                  multiSelectMode = false;
+                  updateMapInteraction();
                 } else {
                   if (selectedUnit) {
-                    selectedUnit.getElement().classList.remove('selected');
+                    selectedUnit.getElement().classList.remove('selected', 'selected-multiselect');
                   }
                   unit.marker.getElement().classList.add('selected');
                   selectedUnit = unit.marker;
                   selectedUnits = [unit.marker];
+                  multiSelectMode = false;
+                  updateMapInteraction();
                 }
               }
               
@@ -1657,7 +1662,8 @@ document.addEventListener('DOMContentLoaded', function() {
         }).addTo(map);
         
         // Add arrow marker at the end (point2) to show direction from point1 to point2
-        // Calculate bearing from point1 to point2 for arrow direction
+        // Arrow points up (north) by default (border-top), so rotate by azimuth to point in correct direction
+        // Azimuth is the bearing from point1 to point2, so arrow should point in that direction
         const arrowIcon = L.divIcon({
             className: 'distance-arrow',
             html: `<div style="
@@ -1678,25 +1684,46 @@ document.addEventListener('DOMContentLoaded', function() {
             zIndexOffset: 200 // Higher z-index, appears above text and line
         }).addTo(map);
 
+        // Create unique ID for distance measurement
+        const distanceId = 'distance_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        
+        // Get unit IDs for the two selected units
+        const unit1 = placedUnits.find(u => u.marker === selectedUnits[0]);
+        const unit2 = placedUnits.find(u => u.marker === selectedUnits[1]);
+        const unit1Id = unit1 ? unit1.id : null;
+        const unit2Id = unit2 ? unit2.id : null;
+
         // Add to placed units for hierarchy
-        placedUnits.push({
+        const distanceUnit = {
+            id: distanceId,
             marker: line,
             arrowMarker: arrowMarker,
             textMarker: textMarker,
             type: 'distance',
             distance: distance,
             azimuth: azimuth,
-            customName: `Distance: ${Math.round(distance)}m, Azimuth: ${Math.round(azimuth)}°`
-        });
+            customName: `Distance: ${Math.round(distance)}m, Azimuth: ${Math.round(azimuth)}°`,
+            point1: point1,
+            point2: point2,
+            unit1Id: unit1Id,
+            unit2Id: unit2Id
+        };
+        placedUnits.push(distanceUnit);
+
+        // Sync distance measurement to Firebase
+        syncUnitToFirebase(distanceUnit);
 
         // Update hierarchy
         updateUnitHierarchy();
 
-        // Clear selection
+        // Clear selection and remove multi-select styling
         selectedUnits.forEach(unit => {
-            unit.getElement().classList.remove('selected');
+            unit.getElement().classList.remove('selected', 'selected-multiselect');
         });
         selectedUnits = [];
+        selectedUnit = null;
+        multiSelectMode = false;
+        updateMapInteraction();
         measureDistanceBtn.style.display = 'none';
     }
 
@@ -1807,7 +1834,7 @@ document.addEventListener('DOMContentLoaded', function() {
             className: 'unit-marker',
             html: `
               <div class="unit-container">
-                <div style="width: 20px; height: 20px; background-color: black; margin: 10px;"></div>
+                <div style="width: 20px; height: 20px; background-color: black; opacity: 0.3; margin: 10px;"></div>
                 <div class="unit-label">${defaultName}</div>
                 <div class="unit-controls">
                   <button class="unit-rotate-btn">⟳</button>
@@ -2966,7 +2993,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         className: 'unit-marker',
                         html: `
                             <div class="unit-container">
-                                <div style="width: 20px; height: 20px; background-color: black; margin: 10px;"></div>
+                                <div style="width: 20px; height: 20px; background-color: black; opacity: 0.3; margin: 10px;"></div>
                                 <div class="unit-label">${defaultName}</div>
                                 <div class="unit-controls">
                                     <button class="unit-rotate-btn">⟳</button>
@@ -3385,21 +3412,41 @@ document.addEventListener('DOMContentLoaded', function() {
         
         if (typeof firebase !== 'undefined' && window.database && unit.id) {
             try {
-                const cleanedUnit = cleanObjectForFirebase({
-                    id: unit.id,
-                    position: unit.position || (unit.marker ? [unit.marker.getLatLng().lat, unit.marker.getLatLng().lng] : null),
-                    symbolKey: unit.symbolKey,
-                    rotation: unit.rotation || 0,
-                    size: unit.size || 40,
-                    customName: unit.customName,
-                    isLocked: unit.isLocked || false,
-                    type: unit.type || 'symbol',
-                    lastUpdate: Date.now(),
-                    userId: window.userId || 'unknown'
-                });
+                let cleanedUnit;
                 
-                // Only sync if we have a valid position
-                if (cleanedUnit.position && Array.isArray(cleanedUnit.position)) {
+                // Handle distance measurements differently
+                if (unit.type === 'distance') {
+                    cleanedUnit = cleanObjectForFirebase({
+                        id: unit.id,
+                        type: 'distance',
+                        distance: unit.distance,
+                        azimuth: unit.azimuth,
+                        customName: unit.customName,
+                        point1: unit.point1 ? [unit.point1.lat, unit.point1.lng] : null,
+                        point2: unit.point2 ? [unit.point2.lat, unit.point2.lng] : null,
+                        unit1Id: unit.unit1Id,
+                        unit2Id: unit.unit2Id,
+                        lastUpdate: Date.now(),
+                        userId: window.userId || 'unknown'
+                    });
+                } else {
+                    // Regular units
+                    cleanedUnit = cleanObjectForFirebase({
+                        id: unit.id,
+                        position: unit.position || (unit.marker ? [unit.marker.getLatLng().lat, unit.marker.getLatLng().lng] : null),
+                        symbolKey: unit.symbolKey,
+                        rotation: unit.rotation || 0,
+                        size: unit.size || 40,
+                        customName: unit.customName,
+                        isLocked: unit.isLocked || false,
+                        type: unit.type || 'symbol',
+                        lastUpdate: Date.now(),
+                        userId: window.userId || 'unknown'
+                    });
+                }
+                
+                // Sync distance measurements or units with valid positions
+                if (unit.type === 'distance' || (cleanedUnit.position && Array.isArray(cleanedUnit.position))) {
                     window.database.ref('mission/units/' + unit.id).set(cleanedUnit)
                         .catch((error) => {
                             console.error('❌ Unit sync error:', error.code, error.message);
@@ -3450,7 +3497,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 className: 'unit-marker',
                                 html: `
                                     <div class="unit-container">
-                                        <div style="width: 20px; height: 20px; background-color: black; margin: 10px;"></div>
+                                        <div style="width: 20px; height: 20px; background-color: black; opacity: 0.3; margin: 10px;"></div>
                                         <div class="unit-label">${unitData.customName || 'Point'}</div>
                                         <div class="unit-controls">
                                             <button class="unit-rotate-btn">⟳</button>
@@ -3604,7 +3651,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 className: 'unit-marker',
                                 html: `
                                     <div class="unit-container">
-                                        <div style="width: 20px; height: 20px; background-color: black; margin: 10px;"></div>
+                                        <div style="width: 20px; height: 20px; background-color: black; opacity: 0.3; margin: 10px;"></div>
                                         <div class="unit-label">${remoteUnit.customName || 'Point'}</div>
                                     </div>
                                 `,
@@ -3640,6 +3687,86 @@ document.addEventListener('DOMContentLoaded', function() {
                             position: remoteUnit.position,
                             type: 'text',
                             customName: remoteUnit.customName
+                        };
+                        placedUnits.push(newUnit);
+                        updateUnitHierarchy();
+                    } else if (remoteUnit.type === 'distance' && remoteUnit.point1 && remoteUnit.point2) {
+                        // Handle distance measurements
+                        const point1 = L.latLng(remoteUnit.point1[0], remoteUnit.point1[1]);
+                        const point2 = L.latLng(remoteUnit.point2[0], remoteUnit.point2[1]);
+                        
+                        // Calculate midpoint and position for text (below the line)
+                        const midPoint = L.latLng(
+                            (point1.lat + point2.lat) / 2,
+                            (point1.lng + point2.lng) / 2
+                        );
+                        const latOffset = -0.0003;
+                        const textPosition = L.latLng(midPoint.lat + latOffset, midPoint.lng);
+                        
+                        // Create text marker
+                        const textMarker = L.marker(textPosition, {
+                            icon: L.divIcon({
+                                className: 'distance-text',
+                                html: `<div style="
+                                    background: rgba(255, 255, 255, 0.85);
+                                    padding: 4px 8px;
+                                    border-radius: 4px;
+                                    font-weight: bold;
+                                    text-align: center;
+                                    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                                    border: 1px solid rgba(0,0,0,0.1);
+                                ">
+                                    ${Math.round(remoteUnit.distance)}m<br>
+                                    ${Math.round(remoteUnit.azimuth)}°
+                                </div>`,
+                                iconSize: [100, 40],
+                                iconAnchor: [50, 20]
+                            }),
+                            zIndexOffset: 100
+                        }).addTo(map);
+                        
+                        // Create line
+                        const line = L.polyline([point1, point2], {
+                            color: '#000',
+                            weight: 2,
+                            opacity: 0.8,
+                            pane: 'overlayPane'
+                        }).addTo(map);
+                        
+                        // Create arrow marker
+                        const arrowIcon = L.divIcon({
+                            className: 'distance-arrow',
+                            html: `<div style="
+                                width: 0;
+                                height: 0;
+                                border-left: 8px solid transparent;
+                                border-right: 8px solid transparent;
+                                border-top: 12px solid #000;
+                                transform: rotate(${remoteUnit.azimuth}deg);
+                                transform-origin: center;
+                            "></div>`,
+                            iconSize: [16, 16],
+                            iconAnchor: [8, 8]
+                        });
+                        
+                        const arrowMarker = L.marker(point2, {
+                            icon: arrowIcon,
+                            zIndexOffset: 200
+                        }).addTo(map);
+                        
+                        const newUnit = {
+                            id: remoteUnit.id,
+                            marker: line,
+                            arrowMarker: arrowMarker,
+                            textMarker: textMarker,
+                            type: 'distance',
+                            distance: remoteUnit.distance,
+                            azimuth: remoteUnit.azimuth,
+                            customName: remoteUnit.customName,
+                            point1: point1,
+                            point2: point2,
+                            unit1Id: remoteUnit.unit1Id,
+                            unit2Id: remoteUnit.unit2Id
                         };
                         placedUnits.push(newUnit);
                         updateUnitHierarchy();
@@ -3777,7 +3904,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Ctrl + click for multiple selection (normal mode)
                 if (selectedUnit === marker) {
                   // Deselect if clicking the same unit
-                  selectedUnit.getElement().classList.remove('selected');
+                  selectedUnit.getElement().classList.remove('selected', 'selected-multiselect');
                   selectedUnit = null;
                   selectedUnits = selectedUnits.filter(u => u !== marker);
                 } else {
@@ -3790,16 +3917,20 @@ document.addEventListener('DOMContentLoaded', function() {
               } else {
                 // Regular click for single selection
                 if (selectedUnit === marker) {
-                  selectedUnit.getElement().classList.remove('selected');
+                  selectedUnit.getElement().classList.remove('selected', 'selected-multiselect');
                   selectedUnit = null;
                   selectedUnits = [];
+                  multiSelectMode = false;
+                  updateMapInteraction();
                 } else {
                   if (selectedUnit) {
-                    selectedUnit.getElement().classList.remove('selected');
+                    selectedUnit.getElement().classList.remove('selected', 'selected-multiselect');
                   }
                   marker.getElement().classList.add('selected');
                   selectedUnit = marker;
                   selectedUnits = [marker];
+                  multiSelectMode = false;
+                  updateMapInteraction();
                 }
               }
               
