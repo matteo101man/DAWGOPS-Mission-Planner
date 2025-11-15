@@ -52,6 +52,15 @@
         touch-action: none; /* Prevent default touch behaviors */
         pointer-events: auto !important; /* Ensure it captures touches */
       }
+      /* Selected unit transparency in multi-select mode */
+      .unit-marker.selected-multiselect .unit-container {
+        opacity: 0.5;
+        transition: opacity 0.2s ease;
+      }
+      .unit-marker.selected-multiselect .unit-label {
+        background: rgba(52, 152, 219, 0.8);
+        color: white;
+      }
       /* Live location marker with pulsing animation */
       .live-location-marker .pulse-ring {
         position: absolute;

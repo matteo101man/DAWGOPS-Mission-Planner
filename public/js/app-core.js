@@ -180,7 +180,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Clear selections when exiting multi-select mode
                     selectedUnits.forEach(unit => {
                         if (unit && unit.getElement) {
-                            unit.getElement().classList.remove('selected');
+                            unit.getElement().classList.remove('selected', 'selected-multiselect');
                         }
                     });
                     selectedUnits = [];
@@ -227,7 +227,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!multiSelectMode) {
                 selectedUnits.forEach(unit => {
                     if (unit && unit.getElement) {
-                        unit.getElement().classList.remove('selected');
+                        unit.getElement().classList.remove('selected', 'selected-multiselect');
                     }
                 });
                 selectedUnits = [];
@@ -241,6 +241,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (measureDistanceBtn) {
                     measureDistanceBtn.style.display = (selectedUnits.length === 2) ? 'block' : 'none';
                 }
+                // Add selected-multiselect class to already selected units
+                selectedUnits.forEach(unit => {
+                    if (unit && unit.getElement) {
+                        unit.getElement().classList.add('selected-multiselect');
+                    }
+                });
                 // Refresh hierarchy to hide/show rename buttons
                 updateUnitHierarchy();
             }
@@ -771,6 +777,35 @@ document.addEventListener('DOMContentLoaded', function() {
         boundingBox.on('mousedown touchstart', function(e) {
           L.DomEvent.stopPropagation(e);
         });
+        
+        // Add click handler to bounding box for selection in placement/multi-select modes
+        boundingBox.on('click', function(e) {
+          if (unitPlacementMode || multiSelectMode) {
+            e.originalEvent.stopPropagation();
+            // Trigger selection on the unit marker
+            if (container) {
+              container.click();
+            }
+          }
+        });
+        
+        // Add touch handler for selection on bounding box
+        if (boxElement) {
+          boxElement.addEventListener('click', function(e) {
+            if (unitPlacementMode || multiSelectMode) {
+              e.stopPropagation();
+              // Trigger selection on the unit marker
+              if (container) {
+                const clickEvent = new MouseEvent('click', {
+                  bubbles: true,
+                  cancelable: true,
+                  view: window
+                });
+                container.dispatchEvent(clickEvent);
+              }
+            }
+          }, {passive: false});
+        }
 
         // Two-finger rotation and pinch-to-resize state
         let isRotating = false;
@@ -1264,7 +1299,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (multiSelectMode) {
               if (selectedUnits.includes(unit.marker)) {
                 // Deselect if already selected
-                unit.marker.getElement().classList.remove('selected');
+                unit.marker.getElement().classList.remove('selected', 'selected-multiselect');
                 selectedUnits = selectedUnits.filter(u => u !== unit.marker);
                 if (selectedUnit === unit.marker) {
                   selectedUnit = selectedUnits.length > 0 ? selectedUnits[0] : null;
@@ -1273,7 +1308,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Add to selection only if under max (2 units)
                 if (selectedUnits.length < 2) {
                   selectedUnits.push(unit.marker);
-                  unit.marker.getElement().classList.add('selected');
+                  unit.marker.getElement().classList.add('selected', 'selected-multiselect');
                   selectedUnit = unit.marker;
                 }
                 // If already at max, do nothing (don't replace)
@@ -3747,7 +3782,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (multiSelectMode) {
               if (selectedUnits.includes(marker)) {
                 // Deselect if already selected
-                marker.getElement().classList.remove('selected');
+                marker.getElement().classList.remove('selected', 'selected-multiselect');
                 selectedUnits = selectedUnits.filter(u => u !== marker);
                 if (selectedUnit === marker) {
                   selectedUnit = selectedUnits.length > 0 ? selectedUnits[0] : null;
@@ -3756,7 +3791,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Add to selection only if under max (2 units)
                 if (selectedUnits.length < 2) {
                   selectedUnits.push(marker);
-                  marker.getElement().classList.add('selected');
+                  marker.getElement().classList.add('selected', 'selected-multiselect');
                   selectedUnit = marker;
                 }
                 // If already at max, do nothing (don't replace)
@@ -3835,6 +3870,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const myUserColor = window.userColor || '#4285F4';
         
         let followEnabled = ('ontouchstart' in window || navigator.maxTouchPoints > 0); // follow by default on touch devices
+        let hasPannedToLocation = false; // Track if we've panned to location on first load
         // Disable follow if user manually drags the map
         map.on('dragstart', function(){ followEnabled = false; });
 
@@ -3895,6 +3931,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (followEnabled) {
                     const currentZoom = map.getZoom();
                     map.setView([lat, lng], currentZoom, { animate: false });
+                }
+                
+                // Auto-pan to location on first load (once)
+                if (!hasPannedToLocation) {
+                    hasPannedToLocation = true;
+                    map.setView([lat, lng], 15, { animate: true });
                 }
             } catch (error) {
                 console.error('Error converting GPS to MGRS:', error);
