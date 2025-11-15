@@ -1123,7 +1123,8 @@ document.addEventListener('DOMContentLoaded', function() {
       placedUnits.forEach((unit, index) => {
         const listItem = document.createElement('li');
         listItem.className = 'hierarchy-item';
-        if (selectedUnits.includes(unit.marker)) {
+        // Check if unit is selected (only for units with markers, not distance measurements)
+        if (unit.marker && selectedUnits.includes(unit.marker)) {
           listItem.classList.add('selected');
         }
         if (unit.isLocked) {
@@ -1360,10 +1361,10 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     });
 
-    // Initialize measurement tools
+    // Initialize measurement tools (old method - disabled, using new multi-select method instead)
     function initMeasurementTools() {
       const measureBtn = document.getElementById('measure-distance');
-      if (!measureBtn) return;
+      if (!measureBtn) return; // Button removed from sidebar, so this won't run
       
       measureBtn.addEventListener('click', function() {
         if (isMeasuring) {
