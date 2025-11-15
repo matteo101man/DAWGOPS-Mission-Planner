@@ -241,6 +241,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (measureDistanceBtn) {
                     measureDistanceBtn.style.display = (selectedUnits.length === 2) ? 'block' : 'none';
                 }
+                // Refresh hierarchy to hide/show rename buttons
+                updateUnitHierarchy();
             }
         });
         
@@ -999,9 +1001,12 @@ document.addEventListener('DOMContentLoaded', function() {
         deleteBtn.addEventListener('touchstart', deleteUnit, {passive:false});
 
 
-        // Double-tap to rename (iOS compatible)
+        // Double-tap to rename (iOS compatible) - disabled in multi-select mode
         let lastTap = 0;
         container.addEventListener('touchend', function(e) {
+          // Don't allow rename in multi-select mode
+          if (multiSelectMode) return;
+          
           const currentTime = new Date().getTime();
           const tapLength = currentTime - lastTap;
           if (tapLength < 500 && tapLength > 0 && !isLocked) {
@@ -1022,21 +1027,22 @@ document.addEventListener('DOMContentLoaded', function() {
           lastTap = currentTime;
         });
         
-        // Double-click to rename (desktop)
+        // Double-click to rename (desktop) - disabled in multi-select mode
         container.addEventListener('dblclick', function(e) {
           e.stopPropagation();
-          if (!isLocked) {
-            const currentName = customName || symbolImages[symbolKey].symbolName;
-            const newName = prompt('Enter new name:', currentName);
-            if (newName !== null && newName.trim() !== '') {
-              customName = newName.trim();
-              label.textContent = customName;
-              const unit = placedUnits.find(u => u.marker === unitMarker);
-              if (unit) {
-                unit.customName = customName;
-                updateUnitHierarchy();
-                syncUnitToFirebase(unit); // Sync name update
-              }
+          // Don't allow rename in multi-select mode
+          if (multiSelectMode || isLocked) return;
+          
+          const currentName = customName || symbolImages[symbolKey].symbolName;
+          const newName = prompt('Enter new name:', currentName);
+          if (newName !== null && newName.trim() !== '') {
+            customName = newName.trim();
+            label.textContent = customName;
+            const unit = placedUnits.find(u => u.marker === unitMarker);
+            if (unit) {
+              unit.customName = customName;
+              updateUnitHierarchy();
+              syncUnitToFirebase(unit); // Sync name update
             }
           }
         });
@@ -1196,22 +1202,25 @@ document.addEventListener('DOMContentLoaded', function() {
         const actions = document.createElement('div');
         actions.className = 'hierarchy-actions';
 
-        // Only add rename and lock buttons for non-distance items
+        // Only add rename and lock buttons for non-distance items (hide rename in multi-select mode)
         if (unit.type !== 'distance') {
-          const renameBtn = document.createElement('button');
-          renameBtn.className = 'hierarchy-rename-btn';
-          renameBtn.innerHTML = '✎';
-          renameBtn.onclick = function(e) {
-            e.stopPropagation();
-            const currentName = unit.customName || (unit.symbolKey ? symbolImages[unit.symbolKey].symbolName : `Point ${index + 1}`);
-            const newName = prompt('Enter new name:', currentName);
-            if (newName !== null && newName.trim() !== '') {
-              unit.customName = newName.trim();
-              const markerElement = unit.marker.getElement();
-              markerElement.querySelector('.unit-label').textContent = unit.customName;
-              updateUnitHierarchy();
-            }
-          };
+          if (!multiSelectMode) {
+            const renameBtn = document.createElement('button');
+            renameBtn.className = 'hierarchy-rename-btn';
+            renameBtn.innerHTML = '✎';
+            renameBtn.onclick = function(e) {
+              e.stopPropagation();
+              const currentName = unit.customName || (unit.symbolKey ? symbolImages[unit.symbolKey].symbolName : `Point ${index + 1}`);
+              const newName = prompt('Enter new name:', currentName);
+              if (newName !== null && newName.trim() !== '') {
+                unit.customName = newName.trim();
+                const markerElement = unit.marker.getElement();
+                markerElement.querySelector('.unit-label').textContent = unit.customName;
+                updateUnitHierarchy();
+              }
+            };
+            actions.appendChild(renameBtn);
+          }
 
           const lockBtn = document.createElement('button');
           lockBtn.className = 'hierarchy-lock-btn';
@@ -1231,8 +1240,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             updateUnitHierarchy();
           };
-
-          actions.appendChild(renameBtn);
           actions.appendChild(lockBtn);
         }
 
@@ -1253,7 +1260,7 @@ document.addEventListener('DOMContentLoaded', function() {
           listItem.onclick = function(e) {
             e = e || window.event; // For IE compatibility
             
-            // Multi-select mode: max 2 units
+            // Multi-select mode: simple tap to select/deselect (max 2 units)
             if (multiSelectMode) {
               if (selectedUnits.includes(unit.marker)) {
                 // Deselect if already selected
@@ -1263,26 +1270,18 @@ document.addEventListener('DOMContentLoaded', function() {
                   selectedUnit = selectedUnits.length > 0 ? selectedUnits[0] : null;
                 }
               } else {
-                // Add to selection (max 2)
+                // Add to selection only if under max (2 units)
                 if (selectedUnits.length < 2) {
                   selectedUnits.push(unit.marker);
                   unit.marker.getElement().classList.add('selected');
                   selectedUnit = unit.marker;
-                } else {
-                  // Replace first selection if already at max
-                  if (selectedUnits[0]) {
-                    selectedUnits[0].getElement().classList.remove('selected');
-                  }
-                  selectedUnits[0] = selectedUnits[1];
-                  selectedUnits[1] = unit.marker;
-                  unit.marker.getElement().classList.add('selected');
-                  selectedUnit = unit.marker;
                 }
+                // If already at max, do nothing (don't replace)
               }
               
               // Show measure distance button only in multi-select mode when 2 units selected
               if (measureDistanceBtn) {
-                measureDistanceBtn.style.display = (multiSelectMode && selectedUnits.length === 2) ? 'block' : 'none';
+                measureDistanceBtn.style.display = (selectedUnits.length === 2) ? 'block' : 'none';
               }
             } else {
               // Normal mode: single selection
@@ -3744,7 +3743,7 @@ document.addEventListener('DOMContentLoaded', function() {
         container.addEventListener('click', function(e) {
             e.stopPropagation();
             
-            // Multi-select mode: max 2 units
+            // Multi-select mode: simple tap to select/deselect (max 2 units)
             if (multiSelectMode) {
               if (selectedUnits.includes(marker)) {
                 // Deselect if already selected
@@ -3754,26 +3753,18 @@ document.addEventListener('DOMContentLoaded', function() {
                   selectedUnit = selectedUnits.length > 0 ? selectedUnits[0] : null;
                 }
               } else {
-                // Add to selection (max 2)
+                // Add to selection only if under max (2 units)
                 if (selectedUnits.length < 2) {
                   selectedUnits.push(marker);
                   marker.getElement().classList.add('selected');
                   selectedUnit = marker;
-                } else {
-                  // Replace first selection if already at max
-                  if (selectedUnits[0]) {
-                    selectedUnits[0].getElement().classList.remove('selected');
-                  }
-                  selectedUnits[0] = selectedUnits[1];
-                  selectedUnits[1] = marker;
-                  marker.getElement().classList.add('selected');
-                  selectedUnit = marker;
                 }
+                // If already at max, do nothing (don't replace)
               }
               
               // Show measure distance button only in multi-select mode when 2 units selected
               if (measureDistanceBtn) {
-                measureDistanceBtn.style.display = (multiSelectMode && selectedUnits.length === 2) ? 'block' : 'none';
+                measureDistanceBtn.style.display = (selectedUnits.length === 2) ? 'block' : 'none';
               }
             } else {
               // Normal mode: single selection

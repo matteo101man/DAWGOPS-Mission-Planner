@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
     <title>Planner</title>
     <link rel="manifest" href="manifest.webmanifest">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -17,6 +17,9 @@
       html, body { height: 100%; margin: 0; }
       /* Disable selection on iOS to avoid accidental highlights */
       html, body, #app { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+      /* Prevent pinch-to-zoom on the webpage itself (iOS) */
+      html, body { touch-action: pan-x pan-y; -ms-touch-action: pan-x pan-y; }
+      #app { touch-action: pan-x pan-y; }
       /* Allow selection inside editable text markers */
       .text-marker, .text-marker * { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
       /* Unit marker styling */
@@ -396,6 +399,30 @@
             e.stopPropagation();
           }, {passive: false});
         }
+        // Prevent pinch-to-zoom on webpage (iOS)
+        var lastTouchEnd = 0;
+        document.addEventListener('touchstart', function(e) {
+          if (e.touches.length > 1) {
+            e.preventDefault(); // Prevent pinch-to-zoom
+          }
+        }, {passive: false});
+        document.addEventListener('touchend', function(e) {
+          var now = Date.now();
+          if (now - lastTouchEnd <= 300) {
+            e.preventDefault(); // Prevent double-tap zoom
+          }
+          lastTouchEnd = now;
+        }, {passive: false});
+        document.addEventListener('gesturestart', function(e) {
+          e.preventDefault(); // Prevent iOS gesture zoom
+        });
+        document.addEventListener('gesturechange', function(e) {
+          e.preventDefault();
+        });
+        document.addEventListener('gestureend', function(e) {
+          e.preventDefault();
+        });
+        
         // Swipe gestures
         var startX=0, startY=0, tracking=false;
         window.addEventListener('touchstart', function(e){
